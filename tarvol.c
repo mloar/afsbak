@@ -407,10 +407,11 @@ WriteVNodeTarHeader(const char *dir, struct vNode *vn)
     memset(&tarheader, 0, sizeof(struct Tar));
     memset(tarheader.chksum, ' ', 8);
     if (vn->type == 1 /* file */) {
-        afs_snprintf(tarheader.name, 100, "%s/%s", dir, get(dir, vn->vnode));
+        strncpy(tarheader.prefix, dir, 167);
+        strncpy(tarheader.name, get(dir, vn->vnode), 100);
         tarheader.typeflag = REGTYPE;
     } else if (vn->type == 2 /* directory */) {
-        afs_snprintf(tarheader.name, 100, "%s/", dir);
+        strncpy(tarheader.prefix, dir, 167);
         tarheader.typeflag = DIRTYPE;
     }
     snprintf(tarheader.size, 12, "%011o", vn->dataSize);
