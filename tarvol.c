@@ -406,14 +406,20 @@ WriteVNodeTarHeader(const char *dir, struct vNode *vn)
 
     memset(&tarheader, 0, sizeof(struct Tar));
     memset(tarheader.chksum, ' ', 8);
+    strncpy(tarheader.prefix, dir, 167);
     if (vn->type == 1 /* file */) {
-        strncpy(tarheader.prefix, dir, 167);
         strncpy(tarheader.name, get(dir, vn->vnode), 100);
         tarheader.typeflag = REGTYPE;
     } else if (vn->type == 2 /* directory */) {
-        strncpy(tarheader.prefix, dir, 167);
         tarheader.typeflag = DIRTYPE;
+    } else if (vn->type == 3 /* symlink or mtpt */ ) {
+        strncpy(tarheader.name, get(dir, vn->vnode), 100);
+        tarheader.typeflag = SYMTYPE;
+        /* Read the link in, delete it, and then create it */
+        readdata(buf, vn->dataSize);
+        strncpy(tarheader.linkname, buf, 100);
     }
+
     snprintf(tarheader.size, 12, "%011o", vn->dataSize);
     snprintf(tarheader.mode, 8, "%07o", vn->modebits);
     snprintf(tarheader.uid, 8, "%07o",  vn->owner);
@@ -421,8 +427,6 @@ WriteVNodeTarHeader(const char *dir, struct vNode *vn)
     snprintf(tarheader.mtime, 12, "%011o", vn->unixModTime);
     strncpy(tarheader.magic, TMAGIC, TMAGLEN);
     strncpy(tarheader.version, TVERSION, TVERSLEN);
-    /*snprintf(tarheader.devmajor, 8, "%07o", 0);
-      snprintf(tarheader.devminor, 8, "%07o", 0);*/
 
     for (i = 0; i < sizeof(struct Tar); i++) {
         chksum += *((unsigned char*)(&tarheader)+i);
@@ -668,30 +672,6 @@ common_vnode:
                 /*ITSAFILE*/
                 else if (vn.type == 3) {
                     /*ITSASYMLINK*/
-                    /* A symlink vnode. So read it into the desired directory. This could
-                     * also be a mount point. If the volume is being restored to AFS, this
-                     * will become a mountpoint. If not, it becomes a symlink to no-where.
-                     */
-                    int fid;
-                    afs_int32 size, s;
-
-                    afs_snprintf(filename, sizeof filename, "%s/%s",
-                            parentdir, get(parentdir, vn.vnode));
-                    /*}*/
-
-                    /* Read the link in, delete it, and then create it */
-                    readdata(buf, vn.dataSize);
-
-                    /* If a mountpoint, change its link path to mountroot */
-                    s = strlen(buf);
-                    if (((buf[0] == '%') || (buf[0] == '#'))
-                            && (buf[s - 1] == '.')) {
-                        /* This is a symbolic link */
-                        buf[s - 1] = 0;     /* Remove prefix '.' */
-                        strcpy(lname, &buf[1]);     /* Remove postfix '#' or '%' */
-                        strcpy(buf, mntroot);
-                        strcat(buf, lname);
-                    }
                 }
                 /*ITSASYMLINK*/
                 else {
