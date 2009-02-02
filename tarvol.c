@@ -21,6 +21,8 @@
 #include "storage.h"
 
 FILE *dumpfile;
+int bytecount = 0;
+int verbose = 0;
 
     afs_int32
 readvalue(size)
@@ -371,6 +373,18 @@ WriteVNodeTarHeader(const char *dir, struct vNode *vn)
         strncpy(tarheader.linkname, buf, 100);
     }
 
+    if (verbose)
+    {
+        if (tarheader.name)
+        {
+            fprintf(stderr, "%s/%s\n", tarheader.prefix, tarheader.name);
+        }
+        else
+        {
+            fprintf(stderr, "%s/\n", tarheader.prefix);
+        }
+    }
+
 #ifdef AFS_LARGEFILE_ENV
     if (vn->dataSize > 0xFFFFFFFF)
     {
@@ -394,6 +408,7 @@ WriteVNodeTarHeader(const char *dir, struct vNode *vn)
 
     snprintf(tarheader.chksum, 8, "%07o", chksum);
     write(1, &tarheader, sizeof(struct Tar));
+    bytecount += sizeof(struct Tar);
 }
 
     afs_int32
@@ -600,6 +615,7 @@ common_vnode:
                         code = fread(buf, 1, s, dumpfile);
                         if (code > 0) {
                             (void)write(1, buf, code);
+                            bytecount += code;
                             size -= code;
                         }
                         if (code != s) {
@@ -626,6 +642,7 @@ common_vnode:
                     while (size--) {
                         char a = 0;
                         write(1, &a, 1);
+                        bytecount++;
                     }
                 }
                 /*ITSAFILE*/
@@ -662,6 +679,8 @@ main(argc, argv)
     {
         switch (arg)
         {
+            case 'h':
+                break;
             case 'x':
                 fprintf(stderr, "Extract not implemented yet\n");
                 return 1;
@@ -669,6 +688,7 @@ main(argc, argv)
             case 'c':
                 break;
             case 'v':
+                verbose++;
                 break;
             case 'f':
                 dumpfile = fopen(optarg, "r");
@@ -711,7 +731,10 @@ cleanup:
     while (c--) {
         char a = 0;
         write(1, &a, 1);
+        bytecount++;
     }
+
+    fprintf(stderr, "Total bytes written: %d\n", bytecount);
 
     return (code);
 }
