@@ -395,11 +395,7 @@ ReadVNode(count)
     afs_int32 vnode;
     afs_int32 mode = 0;
 
-    /*  memset(&vn, 0, sizeof(vn)); */
-    vn.dataSize = 0;
-    vn.vnode = 0;
-    vn.parent = 0;
-    vn.type = 0;
+    memset(&vn, 0, sizeof(vn));
 
     vn.vnode = ntohl(readvalue(4));
     vn.uniquifier = ntohl(readvalue(4));
