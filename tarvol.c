@@ -65,10 +65,6 @@
 
 char rootdir[MAXPATHLEN];
 char mntroot[MAXPATHLEN];
-#define ADIR  "AFSDir-"
-#define AFILE "AFSFile-"
-#define ODIR  "__ORPHANEDIR__."
-#define OFILE "__ORPHANFILE__."
 
 int inc_dump = 0;
 FILE *dumpfile;
@@ -442,7 +438,7 @@ ReadVNode(count)
     struct vNode vn;
     int code, i, done, entries;
     char tag, c;
-    char dirname[MAXNAMELEN], linkname[MAXNAMELEN], lname[MAXNAMELEN];
+    char dirname[MAXNAMELEN], lname[MAXNAMELEN];
     char parentdir[MAXNAMELEN], vflink[MAXNAMELEN];
     char filename[MAXNAMELEN], fname[MAXNAMELEN];
     int len;
@@ -527,8 +523,6 @@ common_vnode:
                     strncpy(parentdir, rootdir, sizeof parentdir);
                 else {
                     strncpy(parentdir, get(rootdir, vnode), sizeof parentdir);
-                    /*afs_snprintf(parentdir, sizeof parentdir, "%s/%s%d", rootdir,
-                            ADIR, vnode);*/
                 }
 
                 WriteVNodeTarHeader(parentdir, &vn);
@@ -616,19 +610,9 @@ common_vnode:
                              * the file will later remove the link.
                              */
                             else {
-                                /*AFILEENTRY*/ afs_snprintf(vflink,
-                                        sizeof vflink,
-                                        "%s/%s%d", parentdir,
-                                        AFILE, this_vn);
+                                /*AFILEENTRY*/
 
                                 add(parentdir, this_vn, this_name);
-                                /*code = symlink(this_name, vflink);
-                                  if ((code < 0) && (errno != EEXIST)) {
-                                  fprintf(stderr,
-                                  "Error creating symlink %s -> %s  code=%d;%d\n",
-                                  vflink, page0->entry[j].name, code,
-                                  errno);
-                                  }*/
                             }
                             /*AFILEENTRY*/}
                     }
@@ -690,18 +674,6 @@ common_vnode:
                     int fid;
                     afs_int32 size, s;
 
-                    /* Check if its vnode-file-link exists and create pathname
-                     * of the symbolic link. If it doesn't exist,
-                     * then the link will be an orphaned link.
-                     */
-                    afs_snprintf(linkname, sizeof linkname, "%s/%s%d", parentdir,
-                            AFILE, vn.vnode);
-                    /*len = readlink(linkname, fname, MAXNAMELEN);
-                      if (len < 0) {
-                      afs_snprintf(filename, sizeof filename, "%s/%s%d",
-                      rootdir, OFILE, vn.vnode);
-                      } else {
-                      fname[len] = '\0';*/
                     afs_snprintf(filename, sizeof filename, "%s/%s",
                             parentdir, get(parentdir, vn.vnode));
                     /*}*/
