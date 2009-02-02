@@ -61,6 +61,7 @@
 #include <dirent.h>
 #include <string.h>
 #include <tar.h>
+#include "storage.h"
 
 char rootdir[MAXPATHLEN];
 char mntroot[MAXPATHLEN];
@@ -138,13 +139,13 @@ readdata(buffer, size)
                 fprintf(stderr, "Read %d bytes out of %lld\n", code, (afs_uintmax_t)size);
         }
         if ((code >= 0) && (code < BUFSIZE))
-            buffer[size] = 0;	/* Add null char at end */
+            buffer[size] = 0;   /* Add null char at end */
     }
 }
 
     afs_int32
 ReadDumpHeader(dh)
-    struct DumpHeader *dh;	/* Defined in dump.h */
+    struct DumpHeader *dh;     /* Defined in dump.h */
 {
     int code, i, done;
     char tag, c;
@@ -208,7 +209,7 @@ struct volumeHeader {
     afs_int32 dayUseDate;
     afs_int32 dayUse;
     afs_int32 weekCount;
-    afs_int32 weekUse[100];	/* weekCount of these */
+    afs_int32 weekUse[100];     /* weekCount of these */
     char motd[1024];
     int inService;
     int blessed;
@@ -234,7 +235,7 @@ ReadVolumeHeader(count)
                 break;
 
             case 'v':
-                ntohl(readvalue(4));	/* version stamp - ignore */
+                ntohl(readvalue(4));        /* version stamp - ignore */
                 break;
 
             case 'n':
@@ -365,14 +366,14 @@ struct vNode {
     char acl[192];
 #ifdef notdef
     struct acl_accessList {
-        int size;		/*size of this access list in bytes, including MySize itself */
-        int version;		/*to deal with upward compatibility ; <= ACL_ACLVERSION */
+        int size;               /*size of this access list in bytes, including MySize itself */
+        int version;            /*to deal with upward compatibility ; <= ACL_ACLVERSION */
         int total;
-        int positive;		/* number of positive entries */
-        int negative;		/* number of minus entries */
+        int positive;           /* number of positive entries */
+        int negative;           /* number of minus entries */
         struct acl_accessEntry {
-            int id;		/*internally-used ID of user or group */
-            int rights;		/*mask */
+            int id;             /*internally-used ID of user or group */
+            int rights;         /*mask */
         } entries[100];
     } acl;
 #endif
@@ -380,6 +381,59 @@ struct vNode {
 };
 
 #define MAXNAMELEN 256
+
+void
+WriteVNodeTarHeader(const char *dir, struct vNode *vn)
+{
+    unsigned int i;
+    unsigned int chksum = 0;
+    char filename[100];
+    struct Tar
+    {
+        char name[100];
+        char mode[8];
+        char uid[8];
+        char gid[8];
+        char size[12];
+        char mtime[12];
+        char chksum[8];
+        char typeflag;
+        char linkname[100];
+        char magic[6];
+        char version[2];
+        char uname[32];
+        char gname[32];
+        char devmajor[8];
+        char devminor[8];
+        char prefix[167];
+    } tarheader;
+
+    memset(&tarheader, 0, sizeof(struct Tar));
+    memset(tarheader.chksum, ' ', 8);
+    if (vn->type == 1 /* file */) {
+        afs_snprintf(tarheader.name, 100, "%s/%s", dir, get(dir, vn->vnode));
+        tarheader.typeflag = REGTYPE;
+    } else if (vn->type == 2 /* directory */) {
+        afs_snprintf(tarheader.name, 100, "%s/", dir);
+        tarheader.typeflag = DIRTYPE;
+    }
+    snprintf(tarheader.size, 12, "%011o", vn->dataSize);
+    snprintf(tarheader.mode, 8, "%07o", vn->modebits);
+    snprintf(tarheader.uid, 8, "%07o",  vn->owner);
+    snprintf(tarheader.gid, 8, "%07o", vn->group);
+    snprintf(tarheader.mtime, 12, "%011o", vn->unixModTime);
+    strncpy(tarheader.magic, TMAGIC, TMAGLEN);
+    strncpy(tarheader.version, TVERSION, TVERSLEN);
+    /*snprintf(tarheader.devmajor, 8, "%07o", 0);
+      snprintf(tarheader.devminor, 8, "%07o", 0);*/
+
+    for (i = 0; i < sizeof(struct Tar); i++) {
+        chksum += *((unsigned char*)(&tarheader)+i);
+    }
+
+    snprintf(tarheader.chksum, 8, "%07o", chksum);
+    write(1, &tarheader, sizeof(struct Tar));
+}
 
     afs_int32
 ReadVNode(count)
@@ -445,7 +499,7 @@ ReadVNode(count)
                 break;
 
             case 'A':
-                readdata(vn.acl, 192);	/* Skip ACL data */
+                readdata(vn.acl, 192);      /* Skip ACL data */
                 break;
 
 #ifdef AFS_LARGEFILE_ENV
@@ -472,9 +526,12 @@ common_vnode:
                 if (vnode == 1)
                     strncpy(parentdir, rootdir, sizeof parentdir);
                 else {
-                    afs_snprintf(parentdir, sizeof parentdir, "%s/%s%d", rootdir,
-                            ADIR, vnode);
+                    strncpy(parentdir, get(rootdir, vnode), sizeof parentdir);
+                    /*afs_snprintf(parentdir, sizeof parentdir, "%s/%s%d", rootdir,
+                            ADIR, vnode);*/
                 }
+
+                WriteVNodeTarHeader(parentdir, &vn);
 
                 if (vn.type == 2) {
                     /*ITSADIR*/
@@ -538,7 +595,7 @@ common_vnode:
 
                             if ((strcmp(this_name, ".") == 0)
                                     || (strcmp(this_name, "..") == 0))
-                                continue;	/* Skip these */
+                                continue;   /* Skip these */
 
                             /* For a directory entry, create it. Then create the
                              * link (from the rootdir) to this directory.
@@ -550,25 +607,8 @@ common_vnode:
                                  */
                                 afs_snprintf(dirname, sizeof dirname, "%s/%s",
                                         parentdir, this_name);
-                                afs_snprintf(vflink, sizeof vflink, "%s/%s%d",
-                                        rootdir, ADIR, this_vn);
 
-                                /* Now create/update the link to the new/moved directory */
-                                if (vn.vnode == 1)
-                                    afs_snprintf(dirname, sizeof dirname, "%s/",
-                                            this_name);
-                                else
-                                    afs_snprintf(dirname, sizeof dirname,
-                                            "%s%d/%s/", ADIR, vn.vnode,
-                                            this_name);
                                 add(rootdir, this_vn, dirname);
-                                /*unlink(vflink);
-                                  code = symlink(dirname, vflink);
-                                  if (code) {
-                                  fprintf(stderr,
-                                  "Error creating symlink %s -> %s  code=%d;%d\n",
-                                  vflink, dirname, code, errno);
-                                  }*/
                             }
                             /*ADIRENTRY*/
                             /* For a file entry, we remember the name of the file
@@ -602,61 +642,10 @@ common_vnode:
                      */
                     int fid;
                     afs_sfsize_t size, s;
-                    struct Tar
-                    {
-                        char name[100];
-                        char mode[8];
-                        char uid[8];
-                        char gid[8];
-                        char size[12];
-                        char mtime[12];
-                        char chksum[8];
-                        char typeflag;
-                        char linkname[100];
-                        char magic[6];
-                        char version[2];
-                        char uname[32];
-                        char gname[32];
-                        char devmajor[8];
-                        char devminor[8];
-                        char prefix[167];
-                    } tarheader;
-                    int chksum = 0LL;
-                    unsigned int i;
 
-                    /*afs_snprintf(filename, sizeof filename, "%s/%s%d", parentdir,
-                      AFILE, vn.vnode);*/
                     afs_snprintf(filename, sizeof filename, "%s/%s", parentdir,
                             get(parentdir, vn.vnode));
 
-                    /* Create a mode for the file. Use the owner bits and
-                     * duplicate them across group and other. The umask
-                     * will remove what we don't want.
-                     */
-                    mode = (vn.modebits >> 6) & 0x7;
-                    mode |= (mode << 6) | (mode << 3);
-
-                    /* Write the file out */
-                    memset(&tarheader, 0, sizeof(struct Tar));
-                    memset(tarheader.chksum, ' ', 8);
-                    strncpy(tarheader.name, filename, 100);
-                    snprintf(tarheader.size, 12, "%011o", vn.dataSize);
-                    snprintf(tarheader.mode, 8, "%07o", mode);
-                    snprintf(tarheader.uid, 8, "%07o",  vn.owner);
-                    snprintf(tarheader.gid, 8, "%07o", vn.group);
-                    snprintf(tarheader.mtime, 12, "%011o", vn.unixModTime);
-                    tarheader.typeflag = REGTYPE;
-                    strncpy(tarheader.magic, TMAGIC, TMAGLEN);
-                    strncpy(tarheader.version, TVERSION, TVERSLEN);
-                    /*snprintf(tarheader.devmajor, 8, "%07o", 0);
-                      snprintf(tarheader.devminor, 8, "%07o", 0);*/
-
-                    for (i = 0; i < sizeof(struct Tar); i++) {
-                        chksum += *((unsigned char*)(&tarheader)+i);
-                    }
-
-                    snprintf(tarheader.chksum, 8, "%07o", chksum);
-                    write(1, &tarheader, sizeof(struct Tar));
                     size = vn.dataSize;
                     while (size > 0) {
                         s = (afs_int32) ((size > BUFSIZE) ? BUFSIZE : size);
@@ -725,22 +714,11 @@ common_vnode:
                     if (((buf[0] == '%') || (buf[0] == '#'))
                             && (buf[s - 1] == '.')) {
                         /* This is a symbolic link */
-                        buf[s - 1] = 0;	/* Remove prefix '.' */
-                        strcpy(lname, &buf[1]);	/* Remove postfix '#' or '%' */
+                        buf[s - 1] = 0;     /* Remove prefix '.' */
+                        strcpy(lname, &buf[1]);     /* Remove postfix '#' or '%' */
                         strcpy(buf, mntroot);
                         strcat(buf, lname);
                     }
-
-                    /*unlink(filename);
-                      code = symlink(buf, filename);
-                      if (code) {
-                      fprintf(stderr,
-                      "Error creating symlink %s -> %s  code=%d;%d\n",
-                      filename, buf, code, errno);
-                      }*/
-
-                    /* Remove the symbolic link */
-                    /*unlink(linkname);*/
                 }
                 /*ITSASYMLINK*/
                 else {
@@ -769,13 +747,13 @@ WorkerBee(struct cmd_syndesc *as, void *arock)
     char fname[MAXNAMELEN], name[MAXNAMELEN], lname[MAXNAMELEN],
          mname[MAXNAMELEN];
     char thisdir[MAXPATHLEN], *t;
-    struct DumpHeader dh;	/* Defined in dump.h */
-#if 0/*ndef HAVE_GETCWD*/	/* XXX enable when autoconf happens */
+    struct DumpHeader dh;       /* Defined in dump.h */
+#if 0/*ndef HAVE_GETCWD*/       /* XXX enable when autoconf happens */
     extern char *getwd();
 #define getcwd(x,y) getwd(x)
 #endif
 
-    if (as->parms[0].items) {	/* -file <dumpfile> */
+    if (as->parms[0].items) {   /* -file <dumpfile> */
         dumpfile = fopen(as->parms[0].items->data, "r");
         if (!dumpfile) {
             fprintf(stderr, "Cannot open '%s'. Code = %d\n",
@@ -783,7 +761,7 @@ WorkerBee(struct cmd_syndesc *as, void *arock)
             goto cleanup;
         }
     } else {
-        dumpfile = (FILE *) stdin;	/* use stdin */
+        dumpfile = (FILE *) stdin;      /* use stdin */
     }
 
     /* Read the dump header. From it we get the volume name */
@@ -796,32 +774,32 @@ WorkerBee(struct cmd_syndesc *as, void *arock)
     type = ReadDumpHeader(&dh);
 
     /* Get the root directory we restore to */
-    if (as->parms[1].items) {	/* -dir <rootdir> */
+    if (as->parms[1].items) {   /* -dir <rootdir> */
         strcpy(rootdir, as->parms[1].items->data);
     } else {
         strcpy(rootdir, ".");
     }
-    strcat(rootdir, "/");
+    /*strcat(rootdir, "/");*/
 
     /* Append the RW volume name to the root directory */
-    strcat(rootdir, dh.volumeName);
+    /*strcat(rootdir, dh.volumeName);
     len = strlen(rootdir);
     if (strcmp(".backup", rootdir + len - 7) == 0) {
         rootdir[len - 7] = 0;
     } else if (strcmp(".readonly", rootdir + len - 9) == 0) {
         rootdir[len - 9] = 0;
-    }
+    }*/
 
     /* Append the extension we asked for */
     if (as->parms[2].items) {
-        strcat(rootdir, as->parms[2].items->data);	/* -extension <ext> */
+        strcat(rootdir, as->parms[2].items->data);      /* -extension <ext> */
     }
 
     /* The mountpoint root is either specifid in -mountpoint
      * or -dir or the current working dir.
      */
-    if ((as->parms[3].items) || (as->parms[1].items)) {	/* -mountpoint  or -dir */
-        t = (char *)getcwd(thisdir, MAXPATHLEN);	/* remember current dir */
+    if ((as->parms[3].items) || (as->parms[1].items)) { /* -mountpoint  or -dir */
+        t = (char *)getcwd(thisdir, MAXPATHLEN);        /* remember current dir */
         if (!t) {
             fprintf(stderr,
                     "Cannot get pathname of current working directory: %s\n",
@@ -838,7 +816,7 @@ WorkerBee(struct cmd_syndesc *as, void *arock)
                     errno);
             goto cleanup;
         }
-        t = (char *)getcwd(mntroot, MAXPATHLEN);	/* get its full pathname */
+        t = (char *)getcwd(mntroot, MAXPATHLEN);        /* get its full pathname */
         if (!t) {
             fprintf(stderr,
                     "Cannot determine pathname of mount point root directory: %s\n",
@@ -846,15 +824,15 @@ WorkerBee(struct cmd_syndesc *as, void *arock)
             code = -1;
             goto cleanup;
         }
-        strcat(mntroot, "/");	/* append '/' to end of it */
-        code = chdir(thisdir);	/* return to original working dir */
+        strcat(mntroot, "/");   /* append '/' to end of it */
+        code = chdir(thisdir);  /* return to original working dir */
         if (code) {
             fprintf(stderr, "Cannot find working directory: Error = %d\n",
                     errno);
             goto cleanup;
         }
-    } else {			/* use current directory */
-        t = (char *)getcwd(mntroot, MAXPATHLEN);	/* get full pathname of current dir */
+    } else {                    /* use current directory */
+        t = (char *)getcwd(mntroot, MAXPATHLEN);        /* get full pathname of current dir */
         if (!t) {
             fprintf(stderr,
                     "Cannot determine pathname of current working directory: %s\n",
@@ -863,23 +841,18 @@ WorkerBee(struct cmd_syndesc *as, void *arock)
             goto cleanup;
         }
     }
-    strcat(mntroot, "/");	/* append '/' to end of it */
+    strcat(mntroot, "/");       /* append '/' to end of it */
 
     /* Set the umask for the restore */
-    if (as->parms[4].items) {	/* -umask */
+    if (as->parms[4].items) {   /* -umask */
         afs_int32 mask;
         mask = strtol(as->parms[4].items->data, 0, 8);
         fprintf(stderr, "Umask set to 0%03o\n", mask);
         umask(mask);
     }
 
-    fprintf(stderr, "Restoring volume dump of '%s' to directory '%s'.\n",
-            dh.volumeName, rootdir);
-    /*code = mkdir(rootdir, 0777);
-      if ((code < 0) && (errno != EEXIST)) {
-      fprintf(stderr, "Error creating directory %s  code=%d;%d\n", rootdir,
-      code, errno);
-      }*/
+    fprintf(stderr, "Converting volume dump of '%s' to tar format.\n",
+            dh.volumeName);
 
     for (count = 1; type == 2; count++) {
         type = ReadVolumeHeader(count);
