@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/sh -e
 
 VOS=/usr/bin/vos
 TIME="0"
@@ -23,4 +23,5 @@ while [[ "$1" != "--" ]]; do
 done
 shift
 
-$VOS dump $1 -time "$TIME" $VOSARGS | $TARVOL -cv
+$VOS backup $1
+$VOS dump $1.backup -time "$TIME" $VOSARGS | $TARVOL -cv
