@@ -23,5 +23,5 @@ while [[ "$1" != "--" ]]; do
 done
 shift
 
-$VOS backup $1
+$VOS backup $1 $VOSARGS
 $VOS dump $1.backup -time "$TIME" $VOSARGS | $TARVOL -cv
