@@ -20,8 +20,8 @@
 #include <tar.h>
 #include "storage.h"
 
-FILE *dumpfile;
-int bytecount = 0;
+FILE *dumpfile, *tarfile;
+size_t bytecount = 0;
 int verbose = 0;
 
     afs_int32
@@ -104,7 +104,18 @@ ReadDumpHeader(dh)
     /*  memset(&dh, 0, sizeof(dh)); */
 
     magic = ntohl(readvalue(4));
+    if (magic != DUMPBEGINMAGIC)
+    {
+        fprintf(stderr, "input does not appear to be a vos dump\n");
+        exit(1);
+    }
+
     dh->version = ntohl(readvalue(4));
+    if (dh->version != DUMPVERSION)
+    {
+        fprintf(stderr, "vos dump has unsupported version: %d\n", dh->version);
+        exit(1);
+    }
 
     done = 0;
     while (!done) {
@@ -337,6 +348,7 @@ WriteVNodeTarHeader(const char *dir, struct vNode *vn)
 {
     unsigned int i;
     unsigned int chksum = 0;
+    const char *filename = get(dir, vn->vnode);
     struct Tar
     {
         char name[100];
@@ -366,15 +378,15 @@ WriteVNodeTarHeader(const char *dir, struct vNode *vn)
     } else if (vn->type == 2 /* directory */) {
         tarheader.typeflag = DIRTYPE;
     } else if (vn->type == 3 /* symlink or mtpt */ ) {
-        strncpy(tarheader.name, get(dir, vn->vnode), 100);
+        strncpy(tarheader.name, filename, 100);
         tarheader.typeflag = SYMTYPE;
-        /* Read the link in, delete it, and then create it */
         readdata(buf, vn->dataSize);
         strncpy(tarheader.linkname, buf, 100);
     }
 
     if (verbose)
     {
+        /* XXX: The fields in the tarheader structure may not be null-terminated. */
         if (tarheader.name)
         {
             fprintf(stderr, "%s/%s\n", tarheader.prefix, tarheader.name);
@@ -407,7 +419,7 @@ WriteVNodeTarHeader(const char *dir, struct vNode *vn)
     }
 
     snprintf(tarheader.chksum, 8, "%07o", chksum);
-    write(1, &tarheader, sizeof(struct Tar));
+    fwrite(&tarheader, 1, sizeof(struct Tar), tarfile);
     bytecount += sizeof(struct Tar);
 }
 
@@ -614,7 +626,7 @@ common_vnode:
                         s = (afs_int32) ((size > BUFSIZE) ? BUFSIZE : size);
                         code = fread(buf, 1, s, dumpfile);
                         if (code > 0) {
-                            (void)write(1, buf, code);
+                            fwrite(buf, 1, code, tarfile);
                             bytecount += code;
                             size -= code;
                         }
@@ -639,11 +651,9 @@ common_vnode:
                                 filename, fname);
                     }
                     size = 512 - (vn.dataSize % 512);
-                    while (size--) {
-                        char a = 0;
-                        write(1, &a, 1);
-                        bytecount++;
-                    }
+                    memset(buf, 0, size);
+                    fwrite(buf, 1, size, tarfile);
+                    bytecount += size;
                 }
                 /*ITSAFILE*/
                 else if (vn.type == 3) {
@@ -669,7 +679,6 @@ main(argc, argv)
     int argc;
     char **argv;
 {
-    int code = 0, c;
     afs_int32 type, count, vcount;
     struct DumpHeader dh;       /* Defined in dump.h */
 
@@ -702,39 +711,38 @@ main(argc, argv)
         }
     }
 
+    tarfile = stdout;
+
     /* Read the dump header. From it we get the volume name */
     type = ntohl(readvalue(1));
-    if (type != 1) {
+    if (type != D_DUMPHEADER) {
         fprintf(stderr, "Expected DumpHeader\n");
-        code = -1;
-        goto cleanup;
+        return -1;
     }
     type = ReadDumpHeader(&dh);
 
-    fprintf(stderr, "Converting volume dump of '%s' to tar format.\n",
+    if (verbose > 1)
+    {
+        fprintf(stderr, "Converting volume dump of '%s' to tar format.\n",
             dh.volumeName);
+    }
 
-    for (count = 1; type == 2; count++) {
+    for (count = 1; type == D_VOLUMEHEADER; count++) {
         type = ReadVolumeHeader(count);
-        for (vcount = 1; type == 3; vcount++)
+        for (vcount = 1; type == D_VNODE; vcount++)
             type = ReadVNode(vcount);
     }
 
-    if (type != 4) {
+    if (type != D_DUMPEND) {
         fprintf(stderr, "Expected End-of-Dump\n");
-        code = -1;
-        goto cleanup;
+        return -1;
     }
 
-cleanup:
-    c = 1024;
-    while (c--) {
-        char a = 0;
-        write(1, &a, 1);
-        bytecount++;
-    }
+    memset(buf, 0, 1024);
+    fwrite(buf, 1, 1024, tarfile);
+    bytecount += 1024;
 
     fprintf(stderr, "Total bytes written: %d\n", bytecount);
 
-    return (code);
+    return 0;
 }
