@@ -22,7 +22,7 @@
 
 FILE *dumpfile, *tarfile;
 size_t bytecount = 0;
-int verbose = 0;
+int acls = 0, verbose = 0;
 
     afs_int32
 readvalue(size)
@@ -86,7 +86,8 @@ readdata(buffer, size)
             if (code < 0)
                 fprintf(stderr, "Code = %d; Errno = %d\n", code, errno);
             else
-                fprintf(stderr, "Read %d bytes out of %lld\n", code, (afs_uintmax_t)size);
+                fprintf(stderr, "Read %d bytes out of %lld\n", code,
+                        (afs_uintmax_t)size);
         }
         if ((code >= 0) && (code < BUFSIZE))
             buffer[size] = 0;   /* Add null char at end */
@@ -324,20 +325,18 @@ struct vNode {
     afs_int32 group;
     afs_int32 modebits;
     afs_int32 parent;
-    char acl[192];
-#ifdef notdef
     struct acl_accessList {
-        int size;               /*size of this access list in bytes, including MySize itself */
-        int version;            /*to deal with upward compatibility ; <= ACL_ACLVERSION */
+        int size; /*size of this access list in bytes, including size itself */
+        int version; /*to deal with upward compatibility ; <= ACL_ACLVERSION */
         int total;
         int positive;           /* number of positive entries */
         int negative;           /* number of minus entries */
         struct acl_accessEntry {
             int id;             /*internally-used ID of user or group */
             int rights;         /*mask */
-        } entries[100];
+        } entries[21];
+        int unused;
     } acl;
-#endif
     afs_sfsize_t dataSize;
 };
 
@@ -386,21 +385,30 @@ WriteVNodeTarHeader(const char *dir, struct vNode *vn)
 
     if (verbose)
     {
-        /* XXX: The fields in the tarheader structure may not be null-terminated. */
-        if (tarheader.name)
+        if (filename)
         {
-            fprintf(stderr, "%s/%s\n", tarheader.prefix, tarheader.name);
+            fprintf(stderr, "%s/%s\n", dir, filename);
         }
         else
         {
-            fprintf(stderr, "%s/\n", tarheader.prefix);
+            fprintf(stderr, "%s/\n", dir);
         }
     }
 
 #ifdef AFS_LARGEFILE_ENV
-    if (vn->dataSize > 0xFFFFFFFF)
+    // 11 octal digits have a maximum size of 8 GB - 1.
+    if (vn->dataSize > ((uintmax_t) 1 << (11 * 3)) - 1)
     {
-        *((afs_sfsize_t*)&tarheader.size) = vn->dataSize | 0x8000000000000000LL;
+        /* GNU tar (and perhaps others) support using base-256 for size */
+        tarheader.size[0] = 0x80;
+        uintmax_t v = vn->dataSize;
+        size_t i;
+
+        for (i = 1; i < sizeof(tarheader.size); i++)
+        {
+            tarheader.size[i] = v & 0xFF;
+            v = v >> 8;
+        }
     }
     else
 #endif
@@ -421,6 +429,130 @@ WriteVNodeTarHeader(const char *dir, struct vNode *vn)
     snprintf(tarheader.chksum, 8, "%07o", chksum);
     fwrite(&tarheader, 1, sizeof(struct Tar), tarfile);
     bytecount += sizeof(struct Tar);
+
+    if (acls && vn->type == 2 /* directory */) {
+        memset(tarheader.chksum, ' ', 8);
+        strncpy(tarheader.name, ".afs_acl_restore.sh", 100);
+        strncpy(tarheader.mode, "0700", 8);
+        tarheader.typeflag = REGTYPE;
+
+        if (verbose)
+        {
+            fprintf(stderr, "%s/.afs_acl_restore.sh\n", dir);
+        }
+
+        {
+            int q;
+
+            buf[0] = 0;
+            strcat(buf, "#!/bin/sh\n\n");
+            if (vn->acl.positive)
+            {
+                strcat(buf, "fs sa `dirname $0` ");
+                for (q = 0; q < vn->acl.positive && q < 21; q++)
+                {
+                    char id[15];
+                    sprintf(id, "%d ", vn->acl.entries[q].id);
+                    strcat(buf, id);
+                    if (vn->acl.entries[q].rights & 1)
+                    {
+                        strcat(buf, "r");
+                    }
+                    if (vn->acl.entries[q].rights & 2)
+                    {
+                        strcat(buf, "w");
+                    }
+                    if (vn->acl.entries[q].rights & 4)
+                    {
+                        strcat(buf, "i");
+                    }
+                    if (vn->acl.entries[q].rights & 8)
+                    {
+                        strcat(buf, "l");
+                    }
+                    if (vn->acl.entries[q].rights & 16)
+                    {
+                        strcat(buf, "d");
+                    }
+                    if (vn->acl.entries[q].rights & 32)
+                    {
+                        strcat(buf, "k");
+                    }
+                    if (vn->acl.entries[q].rights & 64)
+                    {
+                        strcat(buf, "a");
+                    }
+                    strcat(buf, " ");
+                }
+                strcat(buf, "-clear\n");
+            }
+            if (vn->acl.negative)
+            {
+                strcat(buf, "fs sa `dirname $0` ");
+                for (; q < vn->acl.total && q < 21; q++)
+                {
+                    char id[15];
+                    sprintf(id, "%d ", vn->acl.entries[q].id);
+                    strcat(buf, id);
+                    if (vn->acl.entries[q].rights & 1)
+                    {
+                        strcat(buf, "r");
+                    }
+                    if (vn->acl.entries[q].rights & 2)
+                    {
+                        strcat(buf, "w");
+                    }
+                    if (vn->acl.entries[q].rights & 4)
+                    {
+                        strcat(buf, "i");
+                    }
+                    if (vn->acl.entries[q].rights & 8)
+                    {
+                        strcat(buf, "l");
+                    }
+                    if (vn->acl.entries[q].rights & 16)
+                    {
+                        strcat(buf, "d");
+                    }
+                    if (vn->acl.entries[q].rights & 32)
+                    {
+                        strcat(buf, "k");
+                    }
+                    if (vn->acl.entries[q].rights & 64)
+                    {
+                        strcat(buf, "a");
+                    }
+                    strcat(buf, " ");
+                }
+                strcat(buf, " -negative\n");
+            }
+
+            snprintf(tarheader.size, 12, "%011o", strlen(buf));
+
+            chksum = 0;
+            for (i = 0; i < sizeof(struct Tar); i++) {
+                chksum += *((unsigned char*)(&tarheader)+i);
+            }
+
+            {
+                size_t size = strlen(buf);
+                snprintf(tarheader.chksum, 8, "%07o", chksum);
+                fwrite(&tarheader, 1, sizeof(struct Tar), tarfile);
+                bytecount += sizeof(struct Tar);
+
+                fwrite(buf, 1, size, tarfile);
+                bytecount += size;
+
+                size = 512 - (size % 512);
+                if (size != 512)
+                {
+                    memset(buf, 0, size);
+                    fwrite(buf, 1, size, tarfile);
+                    bytecount += size;
+                }
+            }
+        }
+    }
 }
 
     afs_int32
@@ -432,7 +564,7 @@ ReadVNode(count)
     char tag;
     char dirname[MAXNAMELEN];
     char parentdir[MAXNAMELEN];
-    char filename[MAXNAMELEN], fname[MAXNAMELEN];
+    char filename[MAXNAMELEN];
     afs_int32 vnode;
 
     memset(&vn, 0, sizeof(vn));
@@ -485,7 +617,17 @@ ReadVNode(count)
                 break;
 
             case 'A':
-                readdata(vn.acl, (afs_sfsize_t)192);      /* Skip ACL data */
+                vn.acl.size = ntohl(readvalue(4));
+                vn.acl.version = ntohl(readvalue(4));
+                vn.acl.total = ntohl(readvalue(4));
+                vn.acl.positive = ntohl(readvalue(4));
+                vn.acl.negative = ntohl(readvalue(4));
+                for (i = 0; i < 21; i++)
+                {
+                    vn.acl.entries[i].id = ntohl(readvalue(4));
+                    vn.acl.entries[i].rights = ntohl(readvalue(4));
+                }
+                vn.acl.unused = ntohl(readvalue(4));
                 break;
 
 #ifdef AFS_LARGEFILE_ENV
@@ -583,9 +725,6 @@ common_vnode:
                                     || (strcmp(this_name, "..") == 0))
                                 continue;   /* Skip these */
 
-                            /* For a directory entry, create it. Then create the
-                             * link (from the rootdir) to this directory.
-                             */
                             if (this_vn & 1) {
                                 /*ADIRENTRY*/
                                 /* dirname is the directory to create.
@@ -594,13 +733,12 @@ common_vnode:
                                 snprintf(dirname, sizeof dirname, "%s/%s",
                                         parentdir, this_name);
 
+                                /* Store the directory name associated with the
+                                 * vnode number.
+                                 */
                                 add(".", this_vn, dirname);
                             }
                             /*ADIRENTRY*/
-                            /* For a file entry, we remember the name of the file
-                             * by creating a link within the directory. Restoring
-                             * the file will later remove the link.
-                             */
                             else {
                                 /*AFILEENTRY*/
 
@@ -613,9 +751,7 @@ common_vnode:
                 /*ITSADIR*/
                 else if (vn.type == 1) {
                     /*ITSAFILE*/
-                    /* A file vnode. So create it into the desired directory. A
-                     * link should exist in the directory naming the file.
-                     */
+
                     afs_sfsize_t size, s;
 
                     snprintf(filename, sizeof filename, "%s/%s", parentdir,
@@ -647,13 +783,16 @@ common_vnode:
                         }
                     }
                     if (size != 0) {
-                        fprintf(stderr, "   File %s (%s) is incomplete\n",
-                                filename, fname);
+                        fprintf(stderr, "   File %s is incomplete\n",
+                                filename);
                     }
                     size = 512 - (vn.dataSize % 512);
-                    memset(buf, 0, size);
-                    fwrite(buf, 1, size, tarfile);
-                    bytecount += size;
+                    if (size != 512)
+                    {
+                        memset(buf, 0, size);
+                        fwrite(buf, 1, size, tarfile);
+                        bytecount += size;
+                    }
                 }
                 /*ITSAFILE*/
                 else if (vn.type == 3) {
@@ -684,10 +823,13 @@ main(argc, argv)
 
     int arg;
     dumpfile = (FILE *) stdin;      /* use stdin */
-    while ((arg = getopt(argc, argv, "xcvf:")) != -1)
+    while ((arg = getopt(argc, argv, "acf:hv")) != -1)
     {
         switch (arg)
         {
+            case 'a':
+                acls = 1;
+                break;
             case 'h':
                 break;
             case 'x':
