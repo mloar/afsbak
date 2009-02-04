@@ -24,4 +24,4 @@ done
 shift
 
 $VOS backup $1 $VOSARGS >&2
-$VOS dump $1.backup -time "$TIME" $VOSARGS | $TARVOL -cv
+$VOS dump $1.backup -time "$TIME" -omitdirs $VOSARGS | $TARVOL -cv
