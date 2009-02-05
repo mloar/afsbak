@@ -1,6 +1,7 @@
 #define _FILE_OFFSET_BITS 64
 
 #include <errno.h>
+#include <stdlib.h>
 #include <unistd.h>
 
 #include "common.h"
@@ -8,13 +9,21 @@
 size_t bytecount = 0;
 int acls = 0, verbose = 0;
 
-void usage(const char *argv0)
-{
-    fprintf(stderr, "Usage: %s -acfv\n", argv0);
+/* Print a usage message and exit */
+static void usage(char *arg, int status, char *msg)
+{ 
+	if (msg) fprintf(stderr, "%s: %s\n", arg, msg);
+	fprintf(stderr, "Usage: %s [options] [file]\n", arg);
+	fprintf(stderr, "  -a     Add ACL restore script to archive\n");
+	fprintf(stderr, "  -c     Not implemented\n");
+	fprintf(stderr, "  -f     Use archive file or device ARCHIVE\n");
+	fprintf(stderr, "  -h     Print this help message\n");
+	fprintf(stderr, "  -v     Verbose mode\n");
+	fprintf(stderr, "  -x     Extract files from archive (not implemented)\n");
+	exit(status);
 }
 
-int
-main(argc, argv)
+int main(argc, argv)
     int argc;
     char **argv;
 {
@@ -28,7 +37,7 @@ main(argc, argv)
                 acls = 1;
                 break;
             case 'h':
-                usage(argv[0]);
+                usage(argv[0], 0, 0);
                 return 1;
                 break;
             case 'x':
@@ -54,7 +63,7 @@ main(argc, argv)
                 fileparam = optarg;
                 break;
             default:
-                return 1;
+		usage(argv[0],1, "Invalid option!");
         }
     }
 
