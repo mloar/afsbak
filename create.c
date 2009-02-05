@@ -18,11 +18,10 @@
 #include <errno.h>
 #include <string.h>
 #include <tar.h>
+#include "common.h"
 #include "storage.h"
 
-FILE *dumpfile, *tarfile;
-size_t bytecount = 0;
-int acls = 0, verbose = 0;
+static FILE *g_dumpfile, *g_tarfile;
 
     afs_int32
 readvalue(size)
@@ -40,7 +39,7 @@ readvalue(size)
         return 0;
     }
 
-    code = fread(&ptr[s], 1, size, dumpfile);
+    code = fread(&ptr[s], 1, size, g_dumpfile);
     if (code != size)
         fprintf(stderr, "Code = %d; Errno = %d\n", code, errno);
 
@@ -54,7 +53,7 @@ readchar()
     int code;
 
     value = '\0';
-    code = fread(&value, 1, 1, dumpfile);
+    code = fread(&value, 1, 1, g_dumpfile);
     if (code != 1)
         fprintf(stderr, "Code = %d; Errno = %d\n", code, errno);
 
@@ -75,13 +74,13 @@ readdata(buffer, size)
     if (!buffer) {
         while (size > 0) {
             s = (afs_int32) ((size > BUFSIZE) ? BUFSIZE : size);
-            code = fread(buf, 1, s, dumpfile);
+            code = fread(buf, 1, s, g_dumpfile);
             if (code != s)
                 fprintf(stderr, "Code = %d; Errno = %d\n", code, errno);
             size -= s;
         }
     } else {
-        code = fread(buffer, 1, size, dumpfile);
+        code = fread(buffer, 1, size, g_dumpfile);
         if (code != size) {
             if (code < 0)
                 fprintf(stderr, "Code = %d; Errno = %d\n", code, errno);
@@ -427,7 +426,7 @@ WriteVNodeTarHeader(const char *dir, struct vNode *vn)
     }
 
     snprintf(tarheader.chksum, 8, "%07o", chksum);
-    fwrite(&tarheader, 1, sizeof(struct Tar), tarfile);
+    fwrite(&tarheader, 1, sizeof(struct Tar), g_tarfile);
     bytecount += sizeof(struct Tar);
 
     if (acls && vn->type == 2 /* directory */) {
@@ -537,17 +536,17 @@ WriteVNodeTarHeader(const char *dir, struct vNode *vn)
             {
                 size_t size = strlen(buf);
                 snprintf(tarheader.chksum, 8, "%07o", chksum);
-                fwrite(&tarheader, 1, sizeof(struct Tar), tarfile);
+                fwrite(&tarheader, 1, sizeof(struct Tar), g_tarfile);
                 bytecount += sizeof(struct Tar);
 
-                fwrite(buf, 1, size, tarfile);
+                fwrite(buf, 1, size, g_tarfile);
                 bytecount += size;
 
                 size = 512 - (size % 512);
                 if (size != 512)
                 {
                     memset(buf, 0, size);
-                    fwrite(buf, 1, size, tarfile);
+                    fwrite(buf, 1, size, g_tarfile);
                     bytecount += size;
                 }
             }
@@ -760,9 +759,9 @@ common_vnode:
                     size = vn.dataSize;
                     while (size > 0) {
                         s = (afs_int32) ((size > BUFSIZE) ? BUFSIZE : size);
-                        code = fread(buf, 1, s, dumpfile);
+                        code = fread(buf, 1, s, g_dumpfile);
                         if (code > 0) {
-                            fwrite(buf, 1, code, tarfile);
+                            fwrite(buf, 1, code, g_tarfile);
                             bytecount += code;
                             size -= code;
                         }
@@ -790,7 +789,7 @@ common_vnode:
                     if (size != 512)
                     {
                         memset(buf, 0, size);
-                        fwrite(buf, 1, size, tarfile);
+                        fwrite(buf, 1, size, g_tarfile);
                         bytecount += size;
                     }
                 }
@@ -814,46 +813,13 @@ common_vnode:
 }
 
 int
-main(argc, argv)
-    int argc;
-    char **argv;
+create(FILE *dumpfile, FILE *tarfile)
 {
     afs_int32 type, count, vcount;
     struct DumpHeader dh;       /* Defined in dump.h */
 
-    int arg;
-    dumpfile = (FILE *) stdin;      /* use stdin */
-    while ((arg = getopt(argc, argv, "acf:hv")) != -1)
-    {
-        switch (arg)
-        {
-            case 'a':
-                acls = 1;
-                break;
-            case 'h':
-                break;
-            case 'x':
-                fprintf(stderr, "Extract not implemented yet\n");
-                return 1;
-                break;
-            case 'c':
-                break;
-            case 'v':
-                verbose++;
-                break;
-            case 'f':
-                dumpfile = fopen(optarg, "r");
-                if (!dumpfile) {
-                    fprintf(stderr, "Cannot open '%s'. Code = %d\n",
-                            optarg, errno);
-                }
-                break;
-            default:
-                return 1;
-        }
-    }
-
-    tarfile = stdout;
+    g_dumpfile = dumpfile;
+    g_tarfile = tarfile;
 
     /* Read the dump header. From it we get the volume name */
     type = ntohl(readvalue(1));
@@ -884,7 +850,7 @@ main(argc, argv)
     fwrite(buf, 1, 1024, tarfile);
     bytecount += 1024;
 
-    fprintf(stderr, "Total bytes written: %d\n", bytecount);
+    fprintf(stderr, "Total bytes written: %u\n", bytecount);
 
     return 0;
 }
