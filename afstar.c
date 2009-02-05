@@ -10,22 +10,20 @@ size_t bytecount = 0;
 int acls = 0, verbose = 0;
 
 /* Print a usage message and exit */
-static void usage(char *arg, int status, char *msg)
-{ 
-	if (msg) fprintf(stderr, "%s: %s\n", arg, msg);
-	fprintf(stderr, "Usage: %s [options] [file]\n", arg);
-	fprintf(stderr, "  -a     Add ACL restore script to archive\n");
-	fprintf(stderr, "  -c     Not implemented\n");
-	fprintf(stderr, "  -f     Use archive file or device ARCHIVE\n");
-	fprintf(stderr, "  -h     Print this help message\n");
-	fprintf(stderr, "  -v     Verbose mode\n");
-	fprintf(stderr, "  -x     Extract files from archive (not implemented)\n");
-	exit(status);
+static void usage(const char *arg, int status, const char *msg)
+{
+    if (msg) fprintf(stderr, "%s: %s\n", arg, msg);
+    fprintf(stderr, "Usage: %s [options] [file]\n", arg);
+    fprintf(stderr, "  -a     Add ACL restore script to archive\n");
+    fprintf(stderr, "  -c     Not implemented\n");
+    fprintf(stderr, "  -f     Use archive file or device ARCHIVE\n");
+    fprintf(stderr, "  -h     Print this help message\n");
+    fprintf(stderr, "  -v     Verbose mode\n");
+    fprintf(stderr, "  -x     Extract files from archive (not implemented)\n");
+    exit(status);
 }
 
-int main(argc, argv)
-    int argc;
-    char **argv;
+int main(int argc, char **argv)
 {
     int arg, operation = 0;
     const char *fileparam = NULL;
@@ -63,7 +61,7 @@ int main(argc, argv)
                 fileparam = optarg;
                 break;
             default:
-		usage(argv[0],1, "Invalid option!");
+                usage(argv[0], 1, "Invalid option!");
         }
     }
 
