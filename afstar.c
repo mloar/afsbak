@@ -15,11 +15,11 @@ static void usage(const char *arg, int status, const char *msg)
     if (msg) fprintf(stderr, "%s: %s\n", arg, msg);
     fprintf(stderr, "Usage: %s [options] [file]\n", arg);
     fprintf(stderr, "  -a     Add ACL restore script to archive\n");
-    fprintf(stderr, "  -c     Not implemented\n");
+    fprintf(stderr, "  -c     Create archive (vos dump to tar)\n");
     fprintf(stderr, "  -f     Use archive file or device ARCHIVE\n");
     fprintf(stderr, "  -h     Print this help message\n");
-    fprintf(stderr, "  -v     Verbose mode\n");
-    fprintf(stderr, "  -x     Extract files from archive (not implemented)\n");
+    fprintf(stderr, "  -v     Verbose mode (multiple for greater verbosity)\n");
+    fprintf(stderr, "  -x     Extract archive (tar to vos dump) (not implemented)\n");
     exit(status);
 }
 
@@ -35,22 +35,20 @@ int main(int argc, char **argv)
                 acls = 1;
                 break;
             case 'h':
-                usage(argv[0], 0, 0);
+                usage(argv[0], 0, NULL);
                 return 1;
                 break;
             case 'x':
                 if (operation)
                 {
-                    fprintf(stderr, "Both -c and -x were specified\n");
-                    return 1;
+                    usage(argv[0], 1, "Both -c and -x were specified");
                 }
                 operation = 'x';
                 break;
             case 'c':
                 if (operation)
                 {
-                    fprintf(stderr, "Both -c and -x were specified\n");
-                    return 1;
+                    usage(argv[0], 1, "Both -c and -x were specified");
                 }
                 operation = 'c';
                 break;
@@ -60,8 +58,9 @@ int main(int argc, char **argv)
             case 'f':
                 fileparam = optarg;
                 break;
-            default:
-                usage(argv[0], 1, "Invalid option!");
+            case '?':
+                usage(argv[0], 1, NULL);
+                break;
         }
     }
 

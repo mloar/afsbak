@@ -1,4 +1,4 @@
-tarvol: afstar.o create.o storage.o
+afstar: afstar.o create.o storage.o
 	gcc -o $@ $^ -L/usr/lib/afs -lcmd -lafsutil -lstdc++
 
 .c.o:

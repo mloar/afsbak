@@ -3,7 +3,7 @@
 VOS=/usr/bin/vos
 TIME="0"
 VOSARGS=-localauth
-TARVOL=/usr/local/sbin/tarvol
+TARVOL=/usr/local/sbin/afsbak
 
 # Need the useless short option to make getopt not go into stupid mode
 ARGS=`getopt -o "q" -s sh -l "newer:" -- "$@"`
