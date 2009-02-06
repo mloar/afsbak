@@ -1,5 +1,5 @@
 afstar: afstar.o create.o storage.o
-	gcc -o $@ $^ -L/usr/lib/afs -lcmd -lafsutil -lstdc++
+	gcc -o $@ $^ -lstdc++
 
 .c.o:
 	gcc -c -Wall -g -DAFS_LARGEFILE_ENV -Iinternal $<
@@ -8,4 +8,4 @@ afstar: afstar.o create.o storage.o
 	g++ -c -Wall -g -Iinternal $<
 
 clean:
-	-rm tarvol *.o
+	-rm afstar *.o
