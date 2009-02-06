@@ -2,8 +2,8 @@
 extern "C" {
 #endif
 
-void add(const char *dir, int vnode, const char *file);
-const char *get(const char *dir, int vnode);
+void add(int vnode, const char *file);
+const char *get(int vnode);
 
 #ifdef __cplusplus
 }

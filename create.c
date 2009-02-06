@@ -346,7 +346,7 @@ WriteVNodeTarHeader(const char *dir, struct vNode *vn)
 {
     unsigned int i;
     unsigned int chksum = 0;
-    const char *filename = get(dir, vn->vnode);
+    const char *filename = (vn->type == vDirectory ? NULL : get(vn->vnode));
     struct Tar
     {
         char name[100];
@@ -371,7 +371,7 @@ WriteVNodeTarHeader(const char *dir, struct vNode *vn)
     memset(tarheader.chksum, ' ', 8);
     strncpy(tarheader.prefix, dir, 167);
     if (vn->type == 1 /* file */) {
-        strncpy(tarheader.name, get(dir, vn->vnode), 100);
+        strncpy(tarheader.name, get(vn->vnode), 100);
         tarheader.typeflag = REGTYPE;
     } else if (vn->type == 2 /* directory */) {
         tarheader.typeflag = DIRTYPE;
@@ -646,27 +646,28 @@ ReadVNode(count)
 #ifdef AFS_LARGEFILE_ENV
 common_vnode:
 #endif
-                /* parentdir is the name of this dir's vnode-file-link
-                 * or this file's parent vnode-file-link.
-                 * "./AFSDir-<#>". It's a symbolic link to its real dir.
-                 * The parent dir and symbolic link to it must exist.
-                 */
                 vnode = ((vn.type == 2) ? vn.vnode : vn.parent);
                 if (vnode == 1)
                     strncpy(parentdir, ".", sizeof parentdir);
                 else {
-                    strncpy(parentdir, get(".", vnode), sizeof parentdir);
+                    if (!get(vnode))
+                    {
+                        // This is a deleted file or directory
+                        parentdir[0] = 0;
+                    }
+                    else
+                    {
+                        strncpy(parentdir, get(vnode), sizeof parentdir);
+                    }
                 }
 
-                WriteVNodeTarHeader(parentdir, &vn);
+                if (parentdir[0])
+                {
+                    WriteVNodeTarHeader(parentdir, &vn);
+                }
 
                 if (vn.type == 2) {
                     /*ITSADIR*/
-                    /* We read the directory entries. If the entry is a
-                     * directory, the subdir is created and the root dir
-                     * will contain a link to it. If its a file, we only
-                     * create a symlink in the dir to the file name.
-                     */
                     char *buffer;
                     unsigned short j;
                     afs_int32 this_vn;
@@ -726,22 +727,19 @@ common_vnode:
 
                             if (this_vn & 1) {
                                 /*ADIRENTRY*/
-                                /* dirname is the directory to create.
-                                 * vflink is what will link to it. 
-                                 */
                                 snprintf(dirname, sizeof dirname, "%s/%s",
                                         parentdir, this_name);
 
                                 /* Store the directory name associated with the
                                  * vnode number.
                                  */
-                                add(".", this_vn, dirname);
+                                add(this_vn, dirname);
                             }
                             /*ADIRENTRY*/
                             else {
                                 /*AFILEENTRY*/
 
-                                add(parentdir, this_vn, this_name);
+                                add(this_vn, this_name);
                             }
                             /*AFILEENTRY*/}
                     }
@@ -754,7 +752,7 @@ common_vnode:
                     afs_sfsize_t size, s;
 
                     snprintf(filename, sizeof filename, "%s/%s", parentdir,
-                            get(parentdir, vn.vnode));
+                            get(vn.vnode));
 
                     size = vn.dataSize;
                     while (size > 0) {
