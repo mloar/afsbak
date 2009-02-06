@@ -1,9 +1,10 @@
 #!/bin/sh -e
 
+AFSTAR=/usr/local/sbin/afstar
 VOS=/usr/bin/vos
-TIME="0"
 VOSARGS=-localauth
-TARVOL=/usr/local/sbin/afsbak
+
+TIME="0"
 
 # Need the useless short option to make getopt not go into stupid mode
 ARGS=`getopt -o "q" -s sh -l "newer:" -- "$@"`
@@ -24,4 +25,4 @@ done
 shift
 
 $VOS backup $1 $VOSARGS >&2
-$VOS dump $1.backup -time "$TIME" -omitdirs $VOSARGS | $TARVOL -cv
+$VOS dump $1.backup -time "$TIME" -omitdirs $VOSARGS | $AFSTAR -cv
