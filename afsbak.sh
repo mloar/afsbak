@@ -1,6 +1,6 @@
 #!/bin/sh -e
 
-AFSTAR=/usr/local/sbin/tarvol
+TARVOL=/usr/local/sbin/tarvol
 VOS=/usr/bin/vos
 VOSARGS=-localauth
 
@@ -25,4 +25,4 @@ done
 shift
 
 $VOS backup $1 $VOSARGS >&2
-$VOS dump $1.backup -time "$TIME" -omitdirs $VOSARGS | $AFSTAR -acv
+$VOS dump $1.backup -time "$TIME" -omitdirs $VOSARGS | $TARVOL -acv

@@ -1,4 +1,4 @@
-afstar: afstar.o create.o storage.o
+tarvol: create.o storage.o tarvol.o
 	gcc -o $@ $^ -lstdc++
 
 .c.o:
@@ -8,4 +8,4 @@ afstar: afstar.o create.o storage.o
 	g++ -c -Wall -g -Iinternal $<
 
 clean:
-	-rm afstar *.o
+	-rm tarvol *.o
