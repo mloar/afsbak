@@ -412,7 +412,7 @@ WriteVNodeTarHeader(const char *dir, struct vNode *vn)
     else
 #endif
     {
-        snprintf(tarheader.size, 12, "%011o", (unsigned int)vn->dataSize);
+        snprintf(tarheader.size, 12, "%011llo", vn->dataSize);
     }
     snprintf(tarheader.mode, 8, "%07o", vn->modebits);
     snprintf(tarheader.uid, 8, "%07o",  vn->owner);
@@ -848,7 +848,7 @@ create(FILE *dumpfile, FILE *tarfile)
     fwrite(buf, 1, 1024, tarfile);
     bytecount += 1024;
 
-    fprintf(stderr, "Total bytes written: %u\n", bytecount);
+    fprintf(stderr, "Total bytes written: %llu\n", bytecount);
 
     return 0;
 }

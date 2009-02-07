@@ -6,7 +6,7 @@
 
 #include "common.h"
 
-size_t bytecount = 0;
+uintmax_t bytecount = 0;
 int acls = 0, verbose = 0;
 
 /* Print a usage message and exit */
