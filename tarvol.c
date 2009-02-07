@@ -1,3 +1,8 @@
+/*
+ * Written by Matthew Loar <matthew@loar.name>
+ * This work is hereby placed in the public domain by its author.
+ */
+
 #define _FILE_OFFSET_BITS 64
 
 #include <errno.h>

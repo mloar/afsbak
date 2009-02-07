@@ -1,5 +1,10 @@
 #!/bin/sh -e
 
+#
+# Written by Matthew Loar <matthew@loar.name>
+# This work is hereby placed in the public domain by its author.
+#
+
 TARVOL=/usr/local/sbin/tarvol
 VOS=/usr/bin/vos
 VOSARGS=-localauth

@@ -395,14 +395,14 @@ WriteVNodeTarHeader(const char *dir, struct vNode *vn)
     }
 
 #ifdef AFS_LARGEFILE_ENV
-    // 11 octal digits have a maximum size of 8 GB - 1.
+    /* 11 octal digits have a maximum size of 8 GB - 1. */
     if (vn->dataSize > ((uintmax_t) 1 << (11 * 3)) - 1)
     {
         /* GNU tar (and perhaps others) support using base-256 for size */
-        tarheader.size[0] = 0x80;
         uintmax_t v = vn->dataSize;
         size_t i;
 
+        tarheader.size[0] = -128; /* 0x80 signed */
         for (i = 1; i < sizeof(tarheader.size); i++)
         {
             tarheader.size[i] = v & 0xFF;
@@ -652,7 +652,7 @@ common_vnode:
                 else {
                     if (!get(vnode))
                     {
-                        // This is a deleted file or directory
+                        /* This is a deleted file or directory */
                         parentdir[0] = 0;
                     }
                     else

@@ -1,0 +1,47 @@
+AFS Backup Utilities
+--------------------
+
+This is a suite of utilities designed to make backing up AFS easier.  At the
+moment it really is only a single utility, tarvol, which transforms a vos dump
+into POSIX tar format.  It was written by Matthew Loar <matthew@loar.name>,
+based on the restorevol utility included in the OpenAFS source distribution.
+
+BUILDING
+
+At the moment there is no configure script, but there are few dependencies.  All
+you need is:
+
+* The OpenAFS header files.  On Debian these are included in the openafs-dev
+  package.
+* gcc (or another C compiler, with possible tweaking of the Makefile).
+* g++ and a Standard C++ Library (this could easily go away - it just requires
+  me to build a simple data structure in C instead of using std::map).
+
+USING
+
+A script called afsbak.sh is included.  It is designed to make using tarvol with
+BackupPC simple.   To set up BackupPC to use tarvol, follow the following steps:
+
+1. Install afsbak.sh and tarvol to /usr/local/sbin.
+2. Add a host to the BackupPC hosts file.  Since BackupPC wants to ping a host
+   before attempting a backup, it is often easiest to use the hostname of a
+   fileserver.
+3. In the configuration file for that host, add the following:
+    $Conf{XferMethod} = 'tar';
+    $Conf{TarShareName} = ['volume.to.back.up'];
+    $Conf{TarClientCmd} = '/usr/bin/env LC_ALL=C /usr/bin/sudo /usr/local/sbin/afsbak.sh';
+    $Conf{TarClientRestoreCmd} = undef;
+    $Conf{TarFullArgs} = '$shareName';
+    $Conf{TarIncrArgs} = '--newer=$incrDate $shareName';
+
+This setup assumes that you want to enumerate all of the volumes to back up in
+the configuration file.  For larger deployments this is probably impractical,
+but devising another method is up to you.
+
+CAVEATS
+
+* POSIX tar format is incapable of storing files larger than 8 GB.  This
+  implementation uses an extension present in GNU tar and others where base-256
+  is used in such cases.
+* This code uses the "ll" printf length modifier, which is new in C99 and may
+  not be supported on older systems.

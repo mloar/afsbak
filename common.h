@@ -1,5 +1,11 @@
-// Needed for FILE*
+/*
+ * Written by Matthew Loar <matthew@loar.name>
+ * This work is hereby placed in the public domain by its author.
+ */
+
+/* Needed for FILE* */
 #include <stdio.h>
+/* Needed for uintmax_t */
 #include <stdint.h>
 
 #ifdef __cplusplus
