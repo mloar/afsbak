@@ -45,3 +45,4 @@ CAVEATS
   is used in such cases.
 * This code uses the "ll" printf length modifier, which is new in C99 and may
   not be supported on older systems.
+* The afsbak.sh script requires GNU date for incremental backup support.

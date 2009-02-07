@@ -22,6 +22,7 @@ eval set -- "$ARGS"
 
 while [[ "$1" != "--" ]]; do
     if [[ "$1" = "--newer" ]]; then
+        # GNU date is needed for the --date option
         TIME=`date "--date=$2" "+%m/%d/%Y %H:%M"`
         shift
     fi
