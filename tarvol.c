@@ -71,7 +71,7 @@ int main(int argc, char **argv)
 
     if (!operation)
     {
-        fprintf(stderr, "Either -c or -x is required\n");
+        usage(argv[0], 1, "Either -c or -x is required\n");
         return 1;
     }
     else if (operation == 'c')
@@ -90,7 +90,7 @@ int main(int argc, char **argv)
     }
     else if (operation == 'x')
     {
-        fprintf(stderr, "extract not implemented yet\n");
+        usage(argv[0], 1, "-x not yet implemented\n");
         return 1;
     }
 
