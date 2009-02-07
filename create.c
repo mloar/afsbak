@@ -7,6 +7,13 @@
  * directory or online at http://www.openafs.org/dl/license10.html
  */
 
+/*
+ * This code is based on the restorevol utility included with the OpenAFS source
+ * distribution.
+ *
+ * Support for the tar format was added by Matthew Loar <matthew@loar.name>.
+ */
+
 #include <afs/afsint.h>
 #include <afs/ihandle.h>
 #include "lock.h"
