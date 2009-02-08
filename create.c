@@ -1,7 +1,7 @@
 /*
  * Copyright 2000, International Business Machines Corporation and others.
  * All Rights Reserved.
- * 
+ *
  * This software has been released under the terms of the IBM Public
  * License.  For details, see the LICENSE file in the top-level source
  * directory or online at http://www.openafs.org/dl/license10.html
@@ -108,7 +108,7 @@ ReadDumpHeader(dh)
     char tag, c;
     afs_int32 magic;
 
-    /*  memset(&dh, 0, sizeof(dh)); */
+    memset(&dh, 0, sizeof(dh));
 
     magic = ntohl(readvalue(4));
     if (magic != DUMPBEGINMAGIC)
@@ -192,7 +192,7 @@ ReadVolumeHeader(count)
     int i, done;
     char tag, c;
 
-    /*  memset(&vh, 0, sizeof(vh)); */
+    memset(&vh, 0, sizeof(vh));
 
     done = 0;
     while (!done) {
@@ -377,12 +377,17 @@ WriteVNodeTarHeader(const char *dir, struct vNode *vn)
     memset(&tarheader, 0, sizeof(struct Tar));
     memset(tarheader.chksum, ' ', 8);
     strncpy(tarheader.prefix, dir, 167);
-    if (vn->type == 1 /* file */) {
+    if (vn->type == 1 /* file */)
+    {
         strncpy(tarheader.name, get(vn->vnode), 100);
         tarheader.typeflag = REGTYPE;
-    } else if (vn->type == 2 /* directory */) {
+    }
+    else if (vn->type == 2 /* directory */)
+    {
         tarheader.typeflag = DIRTYPE;
-    } else if (vn->type == 3 /* symlink or mtpt */ ) {
+    }
+    else if (vn->type == 3 /* symlink or mtpt */ )
+    {
         strncpy(tarheader.name, filename, 100);
         tarheader.typeflag = SYMTYPE;
         readdata(buf, vn->dataSize);
@@ -401,26 +406,35 @@ WriteVNodeTarHeader(const char *dir, struct vNode *vn)
         }
     }
 
-#ifdef AFS_LARGEFILE_ENV
-    /* 11 octal digits have a maximum size of 8 GB - 1. */
-    if (vn->dataSize > ((uintmax_t) 1 << (11 * 3)) - 1)
+    /*
+     * In the vos dump format, the target of symlinks is the data.  In the tar
+     * format, it is included in the header.  So be sure to write a zero size
+     * for a symlink.
+     */
+    if (vn->type != 3 /* symlink or mtpt */)
     {
-        /* GNU tar (and perhaps others) support using base-256 for size */
-        uintmax_t v = vn->dataSize;
-        size_t i;
-
-        tarheader.size[0] = -128; /* 0x80 signed */
-        for (i = 1; i < sizeof(tarheader.size); i++)
+#ifdef AFS_LARGEFILE_ENV
+        /* 11 octal digits have a maximum size of 8 GB - 1. */
+        if (vn->dataSize > ((uintmax_t) 1 << (11 * 3)) - 1)
         {
-            tarheader.size[i] = v & 0xFF;
-            v = v >> 8;
+            /* GNU tar (and perhaps others) support using base-256 for size */
+            uintmax_t v = vn->dataSize;
+            size_t i;
+
+            tarheader.size[0] = -128; /* 0x80 signed */
+            for (i = 1; i < sizeof(tarheader.size); i++)
+            {
+                tarheader.size[i] = v & 0xFF;
+                v = v >> 8;
+            }
+        }
+        else
+#endif
+        {
+            snprintf(tarheader.size, 12, "%011llo", vn->dataSize);
         }
     }
-    else
-#endif
-    {
-        snprintf(tarheader.size, 12, "%011llo", vn->dataSize);
-    }
+
     snprintf(tarheader.mode, 8, "%07o", vn->modebits);
     snprintf(tarheader.uid, 8, "%07o",  vn->owner);
     snprintf(tarheader.gid, 8, "%07o", vn->group);
@@ -659,7 +673,7 @@ common_vnode:
                 else {
                     if (!get(vnode))
                     {
-                        /* This is a deleted file or directory */
+                        /* This is an orphan */
                         parentdir[0] = 0;
                     }
                     else
@@ -668,6 +682,7 @@ common_vnode:
                     }
                 }
 
+                /* Don't write a header for orphans */
                 if (parentdir[0])
                 {
                     WriteVNodeTarHeader(parentdir, &vn);
@@ -758,15 +773,16 @@ common_vnode:
 
                     afs_sfsize_t size, s;
 
-                    snprintf(filename, sizeof filename, "%s/%s", parentdir,
-                            get(vn.vnode));
-
                     size = vn.dataSize;
                     while (size > 0) {
                         s = (afs_int32) ((size > BUFSIZE) ? BUFSIZE : size);
                         code = fread(buf, 1, s, g_dumpfile);
                         if (code > 0) {
-                            fwrite(buf, 1, code, g_tarfile);
+                            /* Don't write the contents of orphaned files */
+                            if (parentdir[0])
+                            {
+                                fwrite(buf, 1, code, g_tarfile);
+                            }
                             bytecount += code;
                             size -= code;
                         }
@@ -786,7 +802,11 @@ common_vnode:
                             break;
                         }
                     }
-                    if (size != 0) {
+                    if (size != 0)
+                    {
+                        snprintf(filename, sizeof filename, "%s/%s", parentdir,
+                                get(vn.vnode));
+
                         fprintf(stderr, "   File %s is incomplete\n",
                                 filename);
                     }
