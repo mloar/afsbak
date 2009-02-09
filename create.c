@@ -108,7 +108,7 @@ ReadDumpHeader(dh)
     char tag, c;
     afs_int32 magic;
 
-    memset(&dh, 0, sizeof(dh));
+    memset(dh, 0, sizeof(dh));
 
     magic = ntohl(readvalue(4));
     if (magic != DUMPBEGINMAGIC)
