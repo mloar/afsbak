@@ -1,5 +1,12 @@
                        User-Visible afsbak Changes
 
+afsbak 1.1 (2009-02-28)
+
+    Remove the -omitdirs parameter to vos dump, since it only looks at mtime
+    of the directory and therefore will miss updates to existing files.  Also
+    stderr since BackupPC doesn't like things it doesn't recognize being
+    written to stderr.
+
 afsbak 1.0 (2009-02-12)
 
     Initial release.
