@@ -11,4 +11,4 @@ aestar: aestar.o
 	g++ -c -Wall -g -Iinternal $<
 
 clean:
-	-rm tarvol *.o
+	-rm aestar tarvol *.o
