@@ -990,10 +990,6 @@ create(FILE *dumpfile, FILE *tarfile)
     while (ftell(orphanfile) > 0)
     {
         FILE *neworphanfile = tmpfile();
-        if (!neworphanfile)
-        {
-            fprintf(stderr, "Could not create temp file for orphans\n");
-        }
 
         writechar(orphanfile, D_DUMPEND);
         rewind(orphanfile);
@@ -1004,8 +1000,15 @@ create(FILE *dumpfile, FILE *tarfile)
             type = ReadVNode(orphanfile, neworphanfile);
         }
 
-        if (!neworphanfile || ftell(neworphanfile) >= (ftell(orphanfile) - 1))
+        if (!neworphanfile)
         {
+            fprintf(stderr, "Could not create temp file for orphans\n");
+            break;
+        }
+
+        if (ftell(neworphanfile) >= (ftell(orphanfile) - 1))
+        {
+            fclose(neworphanfile);
             break;
         }
 
