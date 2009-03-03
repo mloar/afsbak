@@ -28,10 +28,10 @@
 #include "common.h"
 #include "storage.h"
 
-static FILE *g_dumpfile, *g_tarfile;
+static FILE *g_tarfile;
 
     afs_int32
-readvalue(size)
+readvalue(FILE *in, int size)
 {
     afs_int32 value, s;
     int code;
@@ -46,32 +46,62 @@ readvalue(size)
         return 0;
     }
 
-    code = fread(&ptr[s], 1, size, g_dumpfile);
+    code = fread(&ptr[s], 1, size, in);
     if (code != size)
         fprintf(stderr, "Code = %d; Errno = %d\n", code, errno);
 
     return (value);
 }
 
+void
+writevalue(FILE *dest, int size, afs_int32 value)
+{
+    int code;
+    afs_int32 s;
+    char *ptr;
+
+    ptr = (char *)&value;
+
+    s = sizeof(value) - size;
+    if (size < 0) {
+        fprintf(stderr, "Too much data in afs_int32\n");
+    }
+
+    code = fwrite(&ptr[s], 1, size, dest);
+    if (code != size)
+        fprintf(stderr, "Code = %d; Errno = %d\n", code, errno);
+}
+
     char
-readchar()
+readchar(FILE *in)
 {
     char value;
     int code;
 
     value = '\0';
-    code = fread(&value, 1, 1, g_dumpfile);
+    code = fread(&value, 1, 1, in);
     if (code != 1)
         fprintf(stderr, "Code = %d; Errno = %d\n", code, errno);
 
     return (value);
 }
 
+void
+writechar(FILE *out, char value)
+{
+    int code;
+
+    code = fwrite(&value, 1, 1, out);
+    if (code != 1)
+        fprintf(stderr, "Code = %d; Errno = %d\n", code, errno);
+}
+
 #define BUFSIZE 16384
 char buf[BUFSIZE];
 
     void
-readdata(buffer, size)
+readdata(in, buffer, size)
+    FILE *in;
     char *buffer;
     afs_sfsize_t size;
 {
@@ -81,13 +111,13 @@ readdata(buffer, size)
     if (!buffer) {
         while (size > 0) {
             s = (afs_int32) ((size > BUFSIZE) ? BUFSIZE : size);
-            code = fread(buf, 1, s, g_dumpfile);
+            code = fread(buf, 1, s, in);
             if (code != s)
                 fprintf(stderr, "Code = %d; Errno = %d\n", code, errno);
             size -= s;
         }
     } else {
-        code = fread(buffer, 1, size, g_dumpfile);
+        code = fread(buffer, 1, size, in);
         if (code != size) {
             if (code < 0)
                 fprintf(stderr, "Code = %d; Errno = %d\n", code, errno);
@@ -101,7 +131,8 @@ readdata(buffer, size)
 }
 
     afs_int32
-ReadDumpHeader(dh)
+ReadDumpHeader(in, dh)
+    FILE *in;
     struct DumpHeader *dh;     /* Defined in dump.h */
 {
     int i, done;
@@ -110,14 +141,14 @@ ReadDumpHeader(dh)
 
     memset(dh, 0, sizeof(*dh));
 
-    magic = ntohl(readvalue(4));
+    magic = ntohl(readvalue(in, 4));
     if (magic != DUMPBEGINMAGIC)
     {
         fprintf(stderr, "input does not appear to be a vos dump\n");
         exit(1);
     }
 
-    dh->version = ntohl(readvalue(4));
+    dh->version = ntohl(readvalue(in, 4));
     if (dh->version != DUMPVERSION)
     {
         fprintf(stderr, "vos dump has unsupported version: %d\n", dh->version);
@@ -126,24 +157,24 @@ ReadDumpHeader(dh)
 
     done = 0;
     while (!done) {
-        tag = readchar();
+        tag = readchar(in);
         switch (tag) {
             case 'v':
-                dh->volumeId = ntohl(readvalue(4));
+                dh->volumeId = ntohl(readvalue(in, 4));
                 break;
 
             case 'n':
                 for (i = 0, c = 'a'; c != '\0'; i++) {
-                    dh->volumeName[i] = c = readchar();
+                    dh->volumeName[i] = c = readchar(in);
                 }
                 dh->volumeName[i] = c;
                 break;
 
             case 't':
-                dh->nDumpTimes = ntohl(readvalue(2)) >> 1;
+                dh->nDumpTimes = ntohl(readvalue(in, 2)) >> 1;
                 for (i = 0; i < dh->nDumpTimes; i++) {
-                    dh->dumpTimes[i].from = ntohl(readvalue(4));
-                    dh->dumpTimes[i].to = ntohl(readvalue(4));
+                    dh->dumpTimes[i].from = ntohl(readvalue(in, 4));
+                    dh->dumpTimes[i].to = ntohl(readvalue(in, 4));
                 }
                 break;
 
@@ -185,7 +216,8 @@ struct volumeHeader {
 };
 
     afs_int32
-ReadVolumeHeader(count)
+ReadVolumeHeader(in, count)
+    FILE *in;
     afs_int32 count;
 {
     struct volumeHeader vh;
@@ -196,117 +228,117 @@ ReadVolumeHeader(count)
 
     done = 0;
     while (!done) {
-        tag = readchar();
+        tag = readchar(in);
         switch (tag) {
             case 'i':
-                vh.volumeId = ntohl(readvalue(4));
+                vh.volumeId = ntohl(readvalue(in, 4));
                 break;
 
             case 'v':
-                ntohl(readvalue(4));        /* version stamp - ignore */
+                ntohl(readvalue(in, 4));        /* version stamp - ignore */
                 break;
 
             case 'n':
                 for (i = 0, c = 'a'; c != '\0'; i++) {
-                    vh.volumeName[i] = c = readchar();
+                    vh.volumeName[i] = c = readchar(in);
                 }
                 vh.volumeName[i] = c;
                 break;
 
             case 's':
-                vh.inService = ntohl(readvalue(1));
+                vh.inService = ntohl(readvalue(in, 1));
                 break;
 
             case 'b':
-                vh.blessed = ntohl(readvalue(1));
+                vh.blessed = ntohl(readvalue(in, 1));
                 break;
 
             case 'u':
-                vh.uniquifier = ntohl(readvalue(4));
+                vh.uniquifier = ntohl(readvalue(in, 4));
                 break;
 
             case 't':
-                vh.volType = ntohl(readvalue(1));
+                vh.volType = ntohl(readvalue(in, 1));
                 break;
 
             case 'p':
-                vh.parentVol = ntohl(readvalue(4));
+                vh.parentVol = ntohl(readvalue(in, 4));
                 break;
 
             case 'c':
-                vh.cloneId = ntohl(readvalue(4));
+                vh.cloneId = ntohl(readvalue(in, 4));
                 break;
 
             case 'q':
-                vh.maxQuota = ntohl(readvalue(4));
+                vh.maxQuota = ntohl(readvalue(in, 4));
                 break;
 
             case 'm':
-                vh.minQuota = ntohl(readvalue(4));
+                vh.minQuota = ntohl(readvalue(in, 4));
                 break;
 
             case 'd':
-                vh.diskUsed = ntohl(readvalue(4));
+                vh.diskUsed = ntohl(readvalue(in, 4));
                 break;
 
             case 'f':
-                vh.fileCount = ntohl(readvalue(4));
+                vh.fileCount = ntohl(readvalue(in, 4));
                 break;
 
             case 'a':
-                vh.accountNumber = ntohl(readvalue(4));
+                vh.accountNumber = ntohl(readvalue(in, 4));
                 break;
 
             case 'o':
-                vh.owner = ntohl(readvalue(4));
+                vh.owner = ntohl(readvalue(in, 4));
                 break;
 
             case 'C':
-                vh.creationDate = ntohl(readvalue(4));
+                vh.creationDate = ntohl(readvalue(in, 4));
                 break;
 
             case 'A':
-                vh.accessDate = ntohl(readvalue(4));
+                vh.accessDate = ntohl(readvalue(in, 4));
                 break;
 
             case 'U':
-                vh.updateDate = ntohl(readvalue(4));
+                vh.updateDate = ntohl(readvalue(in, 4));
                 break;
 
             case 'E':
-                vh.expirationDate = ntohl(readvalue(4));
+                vh.expirationDate = ntohl(readvalue(in, 4));
                 break;
 
             case 'B':
-                vh.backupDate = ntohl(readvalue(4));
+                vh.backupDate = ntohl(readvalue(in, 4));
                 break;
 
             case 'O':
                 for (i = 0, c = 'a'; c != '\0'; i++) {
-                    vh.message[i] = c = readchar();
+                    vh.message[i] = c = readchar(in);
                 }
                 vh.volumeName[i] = c;
                 break;
 
             case 'W':
-                vh.weekCount = ntohl(readvalue(2));
+                vh.weekCount = ntohl(readvalue(in, 2));
                 for (i = 0; i < vh.weekCount; i++) {
-                    vh.weekUse[i] = ntohl(readvalue(4));
+                    vh.weekUse[i] = ntohl(readvalue(in, 4));
                 }
                 break;
 
             case 'M':
                 for (i = 0, c = 'a'; c != '\0'; i++) {
-                    vh.motd[i] = c = readchar();
+                    vh.motd[i] = c = readchar(in);
                 }
                 break;
 
             case 'D':
-                vh.dayUseDate = ntohl(readvalue(4));
+                vh.dayUseDate = ntohl(readvalue(in, 4));
                 break;
 
             case 'Z':
-                vh.dayUse = ntohl(readvalue(4));
+                vh.dayUse = ntohl(readvalue(in, 4));
                 break;
 
             default:
@@ -349,7 +381,7 @@ struct vNode {
 #define MAXNAMELEN 256
 
 void
-WriteVNodeTarHeader(const char *dir, struct vNode *vn)
+WriteVNodeTarHeader(FILE *in, const char *dir, struct vNode *vn, FILE *dest)
 {
     unsigned int i;
     unsigned int chksum = 0;
@@ -379,7 +411,7 @@ WriteVNodeTarHeader(const char *dir, struct vNode *vn)
     strncpy(tarheader.prefix, dir, 167);
     if (vn->type == 1 /* file */)
     {
-        strncpy(tarheader.name, get(vn->vnode), 100);
+        strncpy(tarheader.name, filename, 100);
         tarheader.typeflag = REGTYPE;
     }
     else if (vn->type == 2 /* directory */)
@@ -390,7 +422,7 @@ WriteVNodeTarHeader(const char *dir, struct vNode *vn)
     {
         strncpy(tarheader.name, filename, 100);
         tarheader.typeflag = SYMTYPE;
-        readdata(buf, vn->dataSize);
+        readdata(in, buf, vn->dataSize);
         strncpy(tarheader.linkname, buf, 100);
     }
 
@@ -447,7 +479,7 @@ WriteVNodeTarHeader(const char *dir, struct vNode *vn)
     }
 
     snprintf(tarheader.chksum, 8, "%07o", chksum);
-    fwrite(&tarheader, 1, sizeof(struct Tar), g_tarfile);
+    fwrite(&tarheader, 1, sizeof(struct Tar), dest);
     bytecount += sizeof(struct Tar);
 
     if (acls && vn->type == 2 /* directory */) {
@@ -557,17 +589,17 @@ WriteVNodeTarHeader(const char *dir, struct vNode *vn)
             {
                 size_t size = strlen(buf);
                 snprintf(tarheader.chksum, 8, "%07o", chksum);
-                fwrite(&tarheader, 1, sizeof(struct Tar), g_tarfile);
+                fwrite(&tarheader, 1, sizeof(struct Tar), dest);
                 bytecount += sizeof(struct Tar);
 
-                fwrite(buf, 1, size, g_tarfile);
+                fwrite(buf, 1, size, dest);
                 bytecount += size;
 
                 size = 512 - (size % 512);
                 if (size != 512)
                 {
                     memset(buf, 0, size);
-                    fwrite(buf, 1, size, g_tarfile);
+                    fwrite(buf, 1, size, dest);
                     bytecount += size;
                 }
             }
@@ -575,9 +607,63 @@ WriteVNodeTarHeader(const char *dir, struct vNode *vn)
     }
 }
 
+void
+WriteVNode(FILE *out, struct vNode *vn)
+{
+    int i;
+
+    writechar(out, D_VNODE);
+    writevalue(out, 4, htonl(vn->vnode));
+    writevalue(out, 4, htonl(vn->uniquifier));
+    writechar(out, 't');
+    writevalue(out, 1, htonl(vn->type));
+    writechar(out, 'l');
+    writevalue(out, 2, htonl(vn->linkCount));
+    writechar(out, 'v');
+    writevalue(out, 4, htonl(vn->dataVersion));
+    writechar(out, 'm');
+    writevalue(out, 4, htonl(vn->unixModTime));
+    writechar(out, 's');
+    writevalue(out, 4, htonl(vn->servModTime));
+    writechar(out, 'a');
+    writevalue(out, 4, htonl(vn->author));
+    writechar(out, 'o');
+    writevalue(out, 4, htonl(vn->owner));
+    writechar(out, 'g');
+    writevalue(out, 4, htonl(vn->group));
+    writechar(out, 'b');
+    writevalue(out, 2, htonl(vn->modebits));
+    writechar(out, 'p');
+    writevalue(out, 4, htonl(vn->parent));
+    writechar(out, 'A');
+    writevalue(out, 4, htonl(vn->acl.size));
+    writevalue(out, 4, htonl(vn->acl.version));
+    writevalue(out, 4, htonl(vn->acl.total));
+    writevalue(out, 4, htonl(vn->acl.positive));
+    writevalue(out, 4, htonl(vn->acl.negative));
+    for (i = 0; i < 21; i++)
+    {
+        writevalue(out, 4, htonl(vn->acl.entries[i].id));
+        writevalue(out, 4, htonl(vn->acl.entries[i].rights));
+    }
+    writevalue(out, 4, htonl(vn->acl.unused));
+#ifdef AFS_LARGEFILE_ENV
+    if (vn->dataSize > 0xFFFFFFFFL)
+    {
+        writechar(out, 'h');
+        writevalue(out, 4, htonl(vn->dataSize >> 32));
+        writevalue(out, 4, htonl(vn->dataSize & 0xFFFFFFFFL));
+    }
+    else
+#endif
+    {
+        writechar(out, 'f');
+        writevalue(out, 4, htonl(vn->dataSize));
+    }
+}
+
     afs_int32
-ReadVNode(count)
-    afs_int32 count;
+ReadVNode(FILE *in, FILE *orphanfile)
 {
     struct vNode vn;
     int code, i, done;
@@ -589,80 +675,80 @@ ReadVNode(count)
 
     memset(&vn, 0, sizeof(vn));
 
-    vn.vnode = ntohl(readvalue(4));
-    vn.uniquifier = ntohl(readvalue(4));
+    vn.vnode = ntohl(readvalue(in, 4));
+    vn.uniquifier = ntohl(readvalue(in, 4));
 
     done = 0;
     while (!done) {
-        tag = readchar();
+        tag = readchar(in);
         switch (tag) {
             case 't':
-                vn.type = ntohl(readvalue(1));
+                vn.type = ntohl(readvalue(in, 1));
                 break;
 
             case 'l':
-                vn.linkCount = ntohl(readvalue(2));
+                vn.linkCount = ntohl(readvalue(in, 2));
                 break;
 
             case 'v':
-                vn.dataVersion = ntohl(readvalue(4));
+                vn.dataVersion = ntohl(readvalue(in, 4));
                 break;
 
             case 'm':
-                vn.unixModTime = ntohl(readvalue(4));
+                vn.unixModTime = ntohl(readvalue(in, 4));
                 break;
 
             case 's':
-                vn.servModTime = ntohl(readvalue(4));
+                vn.servModTime = ntohl(readvalue(in, 4));
                 break;
 
             case 'a':
-                vn.author = ntohl(readvalue(4));
+                vn.author = ntohl(readvalue(in, 4));
                 break;
 
             case 'o':
-                vn.owner = ntohl(readvalue(4));
+                vn.owner = ntohl(readvalue(in, 4));
                 break;
 
             case 'g':
-                vn.group = ntohl(readvalue(4));
+                vn.group = ntohl(readvalue(in, 4));
                 break;
 
             case 'b':
-                vn.modebits = ntohl(readvalue(2));
+                vn.modebits = ntohl(readvalue(in, 2));
                 break;
 
             case 'p':
-                vn.parent = ntohl(readvalue(4));
+                vn.parent = ntohl(readvalue(in, 4));
                 break;
 
             case 'A':
-                vn.acl.size = ntohl(readvalue(4));
-                vn.acl.version = ntohl(readvalue(4));
-                vn.acl.total = ntohl(readvalue(4));
-                vn.acl.positive = ntohl(readvalue(4));
-                vn.acl.negative = ntohl(readvalue(4));
+                vn.acl.size = ntohl(readvalue(in, 4));
+                vn.acl.version = ntohl(readvalue(in, 4));
+                vn.acl.total = ntohl(readvalue(in, 4));
+                vn.acl.positive = ntohl(readvalue(in, 4));
+                vn.acl.negative = ntohl(readvalue(in, 4));
                 for (i = 0; i < 21; i++)
                 {
-                    vn.acl.entries[i].id = ntohl(readvalue(4));
-                    vn.acl.entries[i].rights = ntohl(readvalue(4));
+                    vn.acl.entries[i].id = ntohl(readvalue(in, 4));
+                    vn.acl.entries[i].rights = ntohl(readvalue(in, 4));
                 }
-                vn.acl.unused = ntohl(readvalue(4));
+                vn.acl.unused = ntohl(readvalue(in, 4));
                 break;
 
 #ifdef AFS_LARGEFILE_ENV
             case 'h':
                 {
                     afs_uint32 hi, lo;
-                    hi = ntohl(readvalue(4));
-                    lo = ntohl(readvalue(4));
+                    hi = ntohl(readvalue(in, 4));
+                    lo = ntohl(readvalue(in, 4));
                     FillInt64(vn.dataSize, hi, lo);
                 }
                 goto common_vnode;
 #endif
 
             case 'f':
-                vn.dataSize = ntohl(readvalue(4));
+                vn.dataSize = ntohl(readvalue(in, 4));
 
 #ifdef AFS_LARGEFILE_ENV
 common_vnode:
@@ -682,149 +768,174 @@ common_vnode:
                     }
                 }
 
-                /* Don't write a header for orphans */
                 if (parentdir[0])
                 {
-                    WriteVNodeTarHeader(parentdir, &vn);
-                }
+                    /* Not an orphan */
+                    WriteVNodeTarHeader(in, parentdir, &vn, g_tarfile);
 
-                if (vn.type == 2) {
-                    /*ITSADIR*/
-                    char *buffer;
-                    unsigned short j;
-                    afs_int32 this_vn;
-                    char *this_name;
+                    if (vn.type == 2) {
+                        /*ITSADIR*/
+                        char *buffer;
+                        unsigned short j;
+                        afs_int32 this_vn;
+                        char *this_name;
 
-                    struct DirEntry {
-                        char flag;
-                        char length;
-                        unsigned short next;
-                        struct MKFid {
-                            afs_int32 vnode;
-                            afs_int32 vunique;
-                        } fid;
-                        char name[20];
-                    };
+                        struct DirEntry {
+                            char flag;
+                            char length;
+                            unsigned short next;
+                            struct MKFid {
+                                afs_int32 vnode;
+                                afs_int32 vunique;
+                            } fid;
+                            char name[20];
+                        };
 
-                    struct Pageheader {
-                        unsigned short pgcount;
-                        unsigned short tag;
-                        char freecount;
-                        char freebitmap[8];
-                        char padding[19];
-                    };
+                        struct Pageheader {
+                            unsigned short pgcount;
+                            unsigned short tag;
+                            char freecount;
+                            char freebitmap[8];
+                            char padding[19];
+                        };
 
-                    struct DirHeader {
-                        struct Pageheader header;
-                        char alloMap[128];
-                        unsigned short hashTable[128];
-                    };
+                        struct DirHeader {
+                            struct Pageheader header;
+                            char alloMap[128];
+                            unsigned short hashTable[128];
+                        };
 
-                    struct Page0 {
-                        struct DirHeader header;
-                        struct DirEntry entry[1];
-                    } *page0;
+                        struct Page0 {
+                            struct DirHeader header;
+                            struct DirEntry entry[1];
+                        } *page0;
 
 
-                    buffer = NULL;
-                    buffer = (char *)malloc(vn.dataSize);
+                        buffer = NULL;
+                        buffer = (char *)malloc(vn.dataSize);
 
-                    readdata(buffer, vn.dataSize);
-                    page0 = (struct Page0 *)buffer;
+                        readdata(in, buffer, vn.dataSize);
+                        page0 = (struct Page0 *)buffer;
 
-                    /* Step through each bucket in the hash table, i,
-                     * and follow each element in the hash chain, j.
-                     * This gives us each entry of the dir.
-                     */
-                    for (i = 0; i < 128; i++) {
-                        for (j = ntohs(page0->header.hashTable[i]); j;
+                        /* Step through each bucket in the hash table, i,
+                         * and follow each element in the hash chain, j.
+                         * This gives us each entry of the dir.
+                         */
+                        for (i = 0; i < 128; i++) {
+                            for (j = ntohs(page0->header.hashTable[i]); j;
                                 j = ntohs(page0->entry[j].next)) {
-                            j -= 13;
-                            this_vn = ntohl(page0->entry[j].fid.vnode);
-                            this_name = page0->entry[j].name;
+                                j -= 13;
+                                this_vn = ntohl(page0->entry[j].fid.vnode);
+                                this_name = page0->entry[j].name;
 
-                            if ((strcmp(this_name, ".") == 0)
+                                if ((strcmp(this_name, ".") == 0)
                                     || (strcmp(this_name, "..") == 0))
-                                continue;   /* Skip these */
+                                    continue;   /* Skip these */
 
-                            if (this_vn & 1) {
-                                /*ADIRENTRY*/
-                                snprintf(dirname, sizeof dirname, "%s/%s",
+                                if (this_vn & 1) {
+                                    /*ADIRENTRY*/
+                                    snprintf(dirname, sizeof dirname, "%s/%s",
                                         parentdir, this_name);
 
-                                /* Store the directory name associated with the
-                                 * vnode number.
-                                 */
-                                add(this_vn, dirname);
-                            }
-                            /*ADIRENTRY*/
-                            else {
-                                /*AFILEENTRY*/
+                                    /* Store the directory name associated with the
+                                     * vnode number.
+                                     */
+                                    add(this_vn, dirname);
+                                }
+                                /*ADIRENTRY*/
+                                else {
+                                    /*AFILEENTRY*/
 
-                                add(this_vn, this_name);
-                            }
-                            /*AFILEENTRY*/}
-                    }
-                    free(buffer);
-                }
-                /*ITSADIR*/
-                else if (vn.type == 1) {
-                    /*ITSAFILE*/
-
-                    afs_sfsize_t size, s;
-
-                    size = vn.dataSize;
-                    while (size > 0) {
-                        s = (afs_int32) ((size > BUFSIZE) ? BUFSIZE : size);
-                        code = fread(buf, 1, s, g_dumpfile);
-                        if (code > 0) {
-                            /* Don't write the contents of orphaned files */
-                            if (parentdir[0])
-                            {
-                                fwrite(buf, 1, code, g_tarfile);
-                            }
-                            bytecount += code;
-                            size -= code;
+                                    add(this_vn, this_name);
+                                }
+                                /*AFILEENTRY*/}
                         }
-                        if (code != s) {
-                            if (code < 0)
-                                fprintf(stderr, "Code = %d; Errno = %d\n", code,
+                        free(buffer);
+                    }
+                    /*ITSADIR*/
+                    else if (vn.type == 1) {
+                        /*ITSAFILE*/
+
+                        afs_sfsize_t size, s;
+
+                        size = vn.dataSize;
+                        while (size > 0) {
+                            s = (afs_int32) ((size > BUFSIZE) ? BUFSIZE : size);
+                            code = fread(buf, 1, s, in);
+                            if (code > 0) {
+                                fwrite(buf, 1, code, g_tarfile);
+                                bytecount += code;
+                                size -= code;
+                            }
+                            if (code != s) {
+                                if (code < 0)
+                                    fprintf(stderr, "Code = %d; Errno = %d\n", code,
                                         errno);
-                            else {
-                                char tmp[100];
-                                (void)snprintf(tmp, sizeof tmp,
+                                else {
+                                    char tmp[100];
+                                    (void)snprintf(tmp, sizeof tmp,
                                         "Read %llu bytes out of %llu",
                                         (afs_uintmax_t) (vn.dataSize -
                                             size),
                                         (afs_uintmax_t) vn.dataSize);
-                                fprintf(stderr, "%s\n", tmp);
+                                    fprintf(stderr, "%s\n", tmp);
+                                }
+                                break;
                             }
-                            break;
                         }
-                    }
-                    if (size != 0)
-                    {
-                        snprintf(filename, sizeof filename, "%s/%s", parentdir,
+                        if (size != 0)
+                        {
+                            snprintf(filename, sizeof filename, "%s/%s", parentdir,
                                 get(vn.vnode));
 
-                        fprintf(stderr, "   File %s is incomplete\n",
+                            fprintf(stderr, "   File %s is incomplete\n",
                                 filename);
+                        }
+                        size = 512 - (vn.dataSize % 512);
+                        if (size != 512)
+                        {
+                            memset(buf, 0, size);
+                            fwrite(buf, 1, size, g_tarfile);
+                            bytecount += size;
+                        }
                     }
-                    size = 512 - (vn.dataSize % 512);
-                    if (size != 512)
-                    {
-                        memset(buf, 0, size);
-                        fwrite(buf, 1, size, g_tarfile);
-                        bytecount += size;
+                    /*ITSAFILE*/
+                    else if (vn.type == 3) {
+                        /*ITSASYMLINK*/
                     }
-                }
-                /*ITSAFILE*/
-                else if (vn.type == 3) {
                     /*ITSASYMLINK*/
+                    else {
+                        fprintf(stderr, "Unknown Vnode block\n");
+                    }
                 }
-                /*ITSASYMLINK*/
-                else {
-                    fprintf(stderr, "Unknown Vnode block\n");
+                else
+                {
+                    if (orphanfile)
+                    {
+                        afs_sfsize_t size, s;
+
+                        WriteVNode(orphanfile, &vn);
+                        size = vn.dataSize;
+                        while (size > 0) {
+                            s = (afs_int32) ((size > BUFSIZE) ? BUFSIZE : size);
+                            code = fread(buf, 1, s, in);
+                            if (code > 0) {
+                                bytecount += code;
+                                size -= code;
+                            }
+                            if (code != s) {
+                                if (code < 0)
+                                    fprintf(stderr, "Code = %d; Errno = %d\n", code,
+                                        errno);
+                                break;
+                            }
+                            fwrite(buf, 1, s, orphanfile);
+                        }
+                        if (size != 0)
+                        {
+                            fprintf(stderr, "   Orphaned file is incomplete\n");
+                        }
+                    }
                 }
                 break;
 
@@ -842,17 +953,22 @@ create(FILE *dumpfile, FILE *tarfile)
 {
     afs_int32 type, count, vcount;
     struct DumpHeader dh;       /* Defined in dump.h */
+    FILE *orphanfile = tmpfile();
 
-    g_dumpfile = dumpfile;
+    if (!orphanfile)
+    {
+        fprintf(stderr, "Could not create temp file for orphans\n");
+    }
+
     g_tarfile = tarfile;
 
     /* Read the dump header. From it we get the volume name */
-    type = ntohl(readvalue(1));
+    type = ntohl(readvalue(dumpfile, 1));
     if (type != D_DUMPHEADER) {
         fprintf(stderr, "Expected DumpHeader\n");
         return -1;
     }
-    type = ReadDumpHeader(&dh);
+    type = ReadDumpHeader(dumpfile, &dh);
 
     if (verbose > 1)
     {
@@ -861,15 +977,43 @@ create(FILE *dumpfile, FILE *tarfile)
     }
 
     for (count = 1; type == D_VOLUMEHEADER; count++) {
-        type = ReadVolumeHeader(count);
+        type = ReadVolumeHeader(dumpfile, count);
         for (vcount = 1; type == D_VNODE; vcount++)
-            type = ReadVNode(vcount);
+            type = ReadVNode(dumpfile, orphanfile);
     }
 
     if (type != D_DUMPEND) {
         fprintf(stderr, "Expected End-of-Dump\n");
         return -1;
     }
+
+    while (ftell(orphanfile) > 0)
+    {
+        FILE *neworphanfile = tmpfile();
+        if (!neworphanfile)
+        {
+            fprintf(stderr, "Could not create temp file for orphans\n");
+        }
+
+        writechar(orphanfile, D_DUMPEND);
+        rewind(orphanfile);
+
+        type = readchar(orphanfile);
+        for (vcount = 1; type == D_VNODE; vcount++)
+        {
+            type = ReadVNode(orphanfile, neworphanfile);
+        }
+
+        if (!neworphanfile || ftell(neworphanfile) >= (ftell(orphanfile) - 1))
+        {
+            break;
+        }
+
+        fclose(orphanfile);
+        orphanfile = neworphanfile;
+    }
+
+    fclose(orphanfile);
 
     memset(buf, 0, 1024);
     fwrite(buf, 1, 1024, tarfile);
