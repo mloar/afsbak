@@ -671,7 +671,7 @@ ReadVNode(FILE *in, FILE *orphanfile)
     char dirname[MAXNAMELEN];
     char parentdir[MAXNAMELEN];
     char filename[MAXNAMELEN];
-    afs_int32 vnode;
+    afs_int32 dirvnode;
 
     memset(&vn, 0, sizeof(vn));
 
@@ -753,22 +753,22 @@ ReadVNode(FILE *in, FILE *orphanfile)
 #ifdef AFS_LARGEFILE_ENV
 common_vnode:
 #endif
-                vnode = ((vn.type == 2) ? vn.vnode : vn.parent);
-                if (vnode == 1)
+                dirvnode = ((vn.type == vDirectory) ? vn.vnode : vn.parent);
+                if (dirvnode == 1)
                     strncpy(parentdir, ".", sizeof parentdir);
                 else {
-                    if (!get(vnode))
+                    if (!get(dirvnode))
                     {
-                        /* This is an orphan */
+                        /* We have not seen this vnode's directory */
                         parentdir[0] = 0;
                     }
                     else
                     {
-                        strncpy(parentdir, get(vnode), sizeof parentdir);
+                        strncpy(parentdir, get(dirvnode), sizeof parentdir);
                     }
                 }
 
-                if (parentdir[0])
+                if (parentdir[0] && (vn.vnode == 1 || get(vn.vnode)))
                 {
                     /* Not an orphan */
                     WriteVNodeTarHeader(in, parentdir, &vn, g_tarfile);
@@ -1008,6 +1008,7 @@ create(FILE *dumpfile, FILE *tarfile)
 
         if (ftell(neworphanfile) >= (ftell(orphanfile) - 1))
         {
+            fprintf(stderr, "Could not find parents for all the orphans\n");
             fclose(neworphanfile);
             break;
         }
