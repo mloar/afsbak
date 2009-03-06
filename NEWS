@@ -1,5 +1,10 @@
                        User-Visible afsbak Changes
 
+afsbak 1.2 (2009-03-06)
+
+    Handle cases where vos dump does not send files in a top-down order.  Also
+    add the aestar tar encryption utility.
+
 afsbak 1.1 (2009-02-28)
 
     Remove the -omitdirs parameter to vos dump, since it only looks at mtime
